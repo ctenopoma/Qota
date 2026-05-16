@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTaskStore } from '@/store/useTaskStore';
-import { formatDue } from '@/lib/date';
+import { formatDue, sortByDue } from '@/lib/date';
 import type { Priority } from '@/types';
 
 interface Props {
@@ -45,7 +45,7 @@ export default function Tags({ onOpen }: Props) {
       </form>
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-6 flex gap-6 items-start">
         {tags.map((tag) => {
-          const tagTasks = tasks.filter((t) => t.tagIds.includes(tag.id));
+          const tagTasks = sortByDue(tasks.filter((t) => t.tagIds.includes(tag.id)));
           return (
             <div
               key={tag.id}

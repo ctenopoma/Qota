@@ -1,5 +1,5 @@
 import { useTaskStore } from '@/store/useTaskStore';
-import { isOverdue, isToday, isThisWeek, formatDue } from '@/lib/date';
+import { isOverdue, isToday, isThisWeek, formatDue, sortByDue } from '@/lib/date';
 import type { Task } from '@/types';
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
 
 export default function Upcoming({ onOpen }: Props) {
   const tasks = useTaskStore((s) => s.tasks);
+  const projects = useTaskStore((s) => s.projects);
 
   const buckets: { key: string; label: string; test: (t: Task) => boolean }[] = [
     { key: 'overdue', label: '期限切れ', test: (t) => isOverdue(t.due) && t.status !== 'done' },
@@ -24,7 +25,7 @@ export default function Upcoming({ onOpen }: Props) {
       </header>
       <div className="flex-1 overflow-x-auto p-4 grid grid-flow-col auto-cols-[280px] gap-3">
         {buckets.map((b) => {
-          const items = tasks.filter(b.test);
+          const items = sortByDue(tasks.filter(b.test));
           return (
             <div key={b.key} className="bg-panel border border-border rounded flex flex-col">
               <div className="px-3 py-2 border-b border-border flex justify-between text-2xs font-mono uppercase tracking-widest">
@@ -35,22 +36,36 @@ export default function Upcoming({ onOpen }: Props) {
                 {items.length === 0 && (
                   <div className="text-2xs text-faint text-center py-4 font-mono">なし</div>
                 )}
-                {items.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => onOpen(t.id)}
-                    className="text-left text-sm bg-bg border border-border rounded px-2 py-1.5 hover:border-mute"
-                  >
-                    <div className={t.status === 'done' ? 'line-through text-mute' : ''}>
-                      {t.title}
-                    </div>
-                    {t.due && (
-                      <div className="text-2xs font-mono text-faint mt-0.5">
-                        {formatDue(t.due)}
+                {items.map((t) => {
+                  const project = projects.find((p) => p.id === t.projectId);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => onOpen(t.id)}
+                      className="text-left text-sm bg-bg border border-border rounded px-2 py-1.5 hover:border-mute"
+                    >
+                      <div className={t.status === 'done' ? 'line-through text-mute' : ''}>
+                        {t.title}
                       </div>
-                    )}
-                  </button>
-                ))}
+                      <div className="flex items-center justify-between mt-0.5">
+                        {project && (
+                          <span className="text-2xs font-mono px-1 py-0.5 rounded border border-border text-mute inline-flex items-center gap-1">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ background: project.color }}
+                            />
+                            {project.name}
+                          </span>
+                        )}
+                        {t.due && (
+                          <div className="text-2xs font-mono text-faint">
+                            {formatDue(t.due)}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );

@@ -66,21 +66,6 @@ export default function Settings() {
       </div>
 
       <div className={card}>
-        <div className="text-sm font-medium mb-1">アクセント色</div>
-        <div className="flex gap-1.5">
-          {(['green', 'blue', 'amber', 'violet'] as const).map((a) => (
-            <button
-              key={a}
-              onClick={() => updateSettings({ accent: a })}
-              className={settings.accent === a ? btnPrimary : btn}
-            >
-              {a}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className={card}>
         <div className="text-sm font-medium mb-1">データのエクスポート</div>
         <div className="text-2xs text-mute mb-3">
           すべてのタスク・プロジェクト・タグを JSON で出力します

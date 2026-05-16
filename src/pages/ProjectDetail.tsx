@@ -1,4 +1,5 @@
 import { useTaskStore } from '@/store/useTaskStore';
+import { sortByDue } from '@/lib/date';
 import TaskTable from '@/components/TaskTable';
 
 interface Props {
@@ -13,7 +14,7 @@ export default function ProjectDetail({ id, onOpen }: Props) {
   if (!project) {
     return <div className="p-6 text-mute text-sm">プロジェクトが見つかりません</div>;
   }
-  const visible = tasks.filter((t) => t.projectId === id);
+  const visible = sortByDue(tasks.filter((t) => t.projectId === id));
   return (
     <TaskTable
       title={project.name}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTaskStore } from '@/store/useTaskStore';
 
 interface Props {
@@ -17,6 +17,13 @@ export default function TaskDetail({ id, onClose }: Props) {
   const deleteSubtask = useTaskStore((s) => s.deleteSubtask);
 
   const [subInput, setSubInput] = useState('');
+  const [titleInput, setTitleInput] = useState(task?.title ?? '');
+
+  useEffect(() => {
+    if (task) {
+      setTitleInput(task.title);
+    }
+  }, [task?.id]);
 
   if (!task) {
     return null;
@@ -39,8 +46,13 @@ export default function TaskDetail({ id, onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
           <input
-            value={t.title}
-            onChange={(e) => updateTask(t.id, { title: e.target.value })}
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
+            onBlur={() => {
+              if (titleInput !== t.title && titleInput.trim()) {
+                updateTask(t.id, { title: titleInput });
+              }
+            }}
             className="bg-transparent text-base font-semibold outline-none"
           />
 

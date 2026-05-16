@@ -1,9 +1,22 @@
 // 日付ヘルパー。すべて ISO 8601 文字列 (YYYY-MM-DD) を入出力する。
 
+import type { Task } from '@/types';
+
+export const sortByDue = (tasks: Task[]): Task[] => {
+  return [...tasks].sort((a, b) => {
+    if (!a.due && !b.due) return 0;
+    if (!a.due) return 1;
+    if (!b.due) return -1;
+    return a.due.localeCompare(b.due);
+  });
+};
+
 export const todayISO = (): string => {
   const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
 };
 
 export const isToday = (iso: string | null): boolean => iso === todayISO();
@@ -35,6 +48,7 @@ export const formatDue = (iso: string | null): string => {
   // tomorrow
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  if (iso === tomorrow.toISOString().slice(0, 10)) return '明日';
+  const tomorrowISO = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+  if (iso === tomorrowISO) return '明日';
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };

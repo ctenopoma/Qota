@@ -11,18 +11,25 @@ const priColor = (p: Priority): string => {
 
 const priLabel = (p: Priority): string => (p === 'high' ? 'H' : p === 'medium' ? 'M' : p === 'low' ? 'L' : '–');
 
+const PROJECT_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e',
+  '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
+];
+
 export default function ProjectsList({ onOpen }: { onOpen: (id: string) => void }) {
   const projects = useTaskStore((s) => s.projects);
   const tasks = useTaskStore((s) => s.tasks);
   const addProject = useTaskStore((s) => s.addProject);
   const deleteProject = useTaskStore((s) => s.deleteProject);
   const [name, setName] = useState('');
+  const [selectedColor, setSelectedColor] = useState(PROJECT_COLORS[0]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await addProject({ name: name.trim() });
+    await addProject({ name: name.trim(), color: selectedColor });
     setName('');
+    setSelectedColor(PROJECT_COLORS[0]);
   };
 
   return (
@@ -30,7 +37,20 @@ export default function ProjectsList({ onOpen }: { onOpen: (id: string) => void 
       <header className="px-6 py-4 border-b border-border">
         <h1 className="text-base font-semibold">プロジェクト</h1>
       </header>
-      <form onSubmit={submit} className="px-6 py-2 border-b border-border flex-shrink-0">
+      <form onSubmit={submit} className="px-6 py-3 border-b border-border flex-shrink-0 space-y-2">
+        <div className="flex gap-2">
+          {PROJECT_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              onClick={() => setSelectedColor(color)}
+              className={`w-5 h-5 rounded-full transition-transform ${
+                selectedColor === color ? 'ring-2 ring-offset-2 ring-ink scale-125' : ''
+              }`}
+              style={{ background: color }}
+            />
+          ))}
+        </div>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
