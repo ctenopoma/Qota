@@ -21,6 +21,14 @@ export const todayISO = (): string => {
 
 export const isToday = (iso: string | null): boolean => iso === todayISO();
 
+export const isTomorrow = (iso: string | null): boolean => {
+  if (!iso) return false;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowISO = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+  return iso === tomorrowISO;
+};
+
 export const isOverdue = (iso: string | null): boolean => {
   if (!iso) return false;
   return iso < todayISO();
@@ -40,15 +48,17 @@ export const isThisWeek = (iso: string | null, weekStart: 'mon' | 'sun' = 'mon')
   return d >= start && d < end;
 };
 
+export const isThisMonth = (iso: string | null): boolean => {
+  if (!iso) return false;
+  const d = new Date(iso + 'T00:00:00');
+  const today = new Date();
+  return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
+};
+
 export const formatDue = (iso: string | null): string => {
   if (!iso) return '';
+  if (isToday(iso)) return '今日';
+  if (isTomorrow(iso)) return '明日';
   const d = new Date(iso + 'T00:00:00');
-  const t = todayISO();
-  if (iso === t) return '今日';
-  // tomorrow
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowISO = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
-  if (iso === tomorrowISO) return '明日';
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };

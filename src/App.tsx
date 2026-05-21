@@ -24,6 +24,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -76,13 +77,15 @@ export default function App() {
   }
 
   return (
-    <div className="grid h-full grid-cols-[220px_1fr] bg-bg text-ink">
+    <div className="grid h-full bg-bg text-ink" style={{ gridTemplateColumns: sidebarOpen ? '220px 1fr' : '60px 1fr' }}>
       <Sidebar
         route={route}
         onRoute={setRoute}
         onCmd={() => setCmdOpen(true)}
         onSearch={() => setSearchOpen(true)}
         onNotif={() => setNotifOpen(true)}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        isOpen={sidebarOpen}
       />
 
       <main className="overflow-hidden">

@@ -16,13 +16,21 @@ const PROJECT_COLORS = [
   '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899',
 ];
 
+interface EditingProject {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export default function ProjectsList({ onOpen }: { onOpen: (id: string) => void }) {
   const projects = useTaskStore((s) => s.projects);
   const tasks = useTaskStore((s) => s.tasks);
   const addProject = useTaskStore((s) => s.addProject);
+  const updateProject = useTaskStore((s) => s.updateProject);
   const deleteProject = useTaskStore((s) => s.deleteProject);
   const [name, setName] = useState('');
   const [selectedColor, setSelectedColor] = useState(PROJECT_COLORS[0]);
+  const [editing, setEditing] = useState<EditingProject | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,27 +75,86 @@ export default function ProjectsList({ onOpen }: { onOpen: (id: string) => void 
               key={p.id}
               className="flex flex-col gap-3 w-72 flex-shrink-0 bg-panel border border-border rounded-lg p-3 max-h-full"
             >
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2" style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: p.color }}
+              {editing?.id === p.id ? (
+                <div className="flex flex-col gap-2 px-1">
+                  <div className="flex gap-2">
+                    {PROJECT_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setEditing({ ...editing, color })}
+                        className={`w-5 h-5 rounded-full transition-transform ${
+                          editing.color === color ? 'ring-2 ring-offset-2 ring-ink scale-125' : ''
+                        }`}
+                        style={{ background: color }}
+                      />
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={editing.name}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    className="w-full bg-bg border border-border rounded px-2 py-1 text-sm outline-none"
+                    autoFocus
                   />
-                  <span className="font-mono text-sm font-semibold truncate hover:underline">{p.name}</span>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setEditing(null)}
+                      className="px-3 py-1 text-sm text-faint hover:text-ink rounded"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (editing.name.trim()) {
+                          await updateProject(p.id, {
+                            name: editing.name.trim(),
+                            color: editing.color,
+                          });
+                        }
+                        setEditing(null);
+                      }}
+                      className="px-3 py-1 text-sm bg-accent text-bg rounded hover:opacity-90"
+                    >
+                      保存
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xs text-faint font-mono">{done}/{projectTasks.length}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`${p.name} を削除しますか？`)) deleteProject(p.id);
-                    }}
-                    className="text-faint hover:text-high"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2" style={{ cursor: 'pointer' }} onClick={() => onOpen(p.id)}>
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ background: p.color }}
+                      />
+                      <span className="font-mono text-sm font-semibold truncate hover:underline">{p.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xs text-faint font-mono">{done}/{projectTasks.length}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditing({ id: p.id, name: p.name, color: p.color });
+                        }}
+                        className="text-faint hover:text-ink text-sm px-1"
+                        title="プロジェクトを編集"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`${p.name} を削除しますか？`)) deleteProject(p.id);
+                        }}
+                        className="text-faint hover:text-high"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1" style={{ scrollbarWidth: 'thin' }}>
                 {projectTasks.length === 0 ? (
                   <div className="text-2xs text-faint font-mono text-center py-4">タスクなし</div>

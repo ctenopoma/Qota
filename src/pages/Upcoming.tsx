@@ -1,5 +1,5 @@
 import { useTaskStore } from '@/store/useTaskStore';
-import { isOverdue, isToday, isThisWeek, formatDue, sortByDue } from '@/lib/date';
+import { isOverdue, isToday, isTomorrow, isThisWeek, isThisMonth, formatDue, sortByDue } from '@/lib/date';
 import type { Priority, Task } from '@/types';
 
 interface Props {
@@ -28,9 +28,11 @@ export default function Upcoming({ onOpen }: Props) {
   const buckets: { key: string; label: string; test: (t: Task) => boolean }[] = [
     { key: 'overdue', label: '期限切れ', test: (t) => isOverdue(t.due) && t.status !== 'done' },
     { key: 'today', label: '今日', test: (t) => isToday(t.due) },
-    { key: 'week', label: '今週', test: (t) => isThisWeek(t.due) && !isToday(t.due) && !isOverdue(t.due) },
-    { key: 'later', label: 'それ以降', test: (t) => !!t.due && !isThisWeek(t.due) && !isOverdue(t.due) },
-    { key: 'someday', label: '日付なし', test: (t) => !t.due },
+    { key: 'tomorrow', label: '明日', test: (t) => isTomorrow(t.due) },
+    { key: 'week', label: '今週', test: (t) => isThisWeek(t.due) && !isToday(t.due) && !isTomorrow(t.due) && !isOverdue(t.due) },
+    { key: 'month', label: '今月', test: (t) => isThisMonth(t.due) && !isThisWeek(t.due) && !isToday(t.due) && !isTomorrow(t.due) && !isOverdue(t.due) },
+    { key: 'later', label: 'それ以降', test: (t) => !!t.due && !isThisMonth(t.due) && !isThisWeek(t.due) && !isOverdue(t.due) },
+    { key: 'someday', label: '記載なし', test: (t) => !t.due },
   ];
 
   return (
