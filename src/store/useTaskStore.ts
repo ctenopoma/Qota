@@ -38,6 +38,8 @@ interface State {
   addSubtask: (taskId: string, title: string) => Promise<void>;
   toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+  updateSubtask: (taskId: string, subtaskId: string, title: string) => Promise<void>;
+  moveSubtask: (taskId: string, subtaskId: string, direction: 'up' | 'down') => Promise<void>;
 
   // ─ projects ─
   addProject: (input: NewProject) => Promise<Project>;
@@ -151,6 +153,33 @@ export const useTaskStore = create<State>((set, get) => ({
         t.id !== taskId
           ? t
           : { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) },
+      ),
+    }));
+  },
+
+  updateSubtask: async (taskId, subtaskId, title) => {
+    const updated = await api.updateSubtask(taskId, subtaskId, title);
+    set((st) => ({
+      tasks: st.tasks.map((t) =>
+        t.id !== taskId
+          ? t
+          : {
+              ...t,
+              subtasks: t.subtasks.map((s) =>
+                s.id === subtaskId ? updated : s,
+              ),
+            },
+      ),
+    }));
+  },
+
+  moveSubtask: async (taskId, subtaskId, direction) => {
+    const subtasks = await api.moveSubtask(taskId, subtaskId, direction);
+    set((st) => ({
+      tasks: st.tasks.map((t) =>
+        t.id !== taskId
+          ? t
+          : { ...t, subtasks },
       ),
     }));
   },

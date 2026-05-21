@@ -15,9 +15,12 @@ export default function TaskDetail({ id, onClose }: Props) {
   const addSubtask = useTaskStore((s) => s.addSubtask);
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
   const deleteSubtask = useTaskStore((s) => s.deleteSubtask);
+  const updateSubtask = useTaskStore((s) => s.updateSubtask);
+  const moveSubtask = useTaskStore((s) => s.moveSubtask);
 
   const [subInput, setSubInput] = useState('');
   const [titleInput, setTitleInput] = useState(task?.title ?? '');
+  const [editingSubtask, setEditingSubtask] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     if (task) {
@@ -136,20 +139,60 @@ export default function TaskDetail({ id, onClose }: Props) {
           <div>
             <div className="text-2xs font-mono uppercase tracking-widest text-faint mb-1">サブタスク</div>
             <div className="flex flex-col gap-0.5 mb-2">
-              {t.subtasks.map((s) => (
-                <div key={s.id} className="flex items-center gap-2 group">
+              {t.subtasks.map((s, i) => (
+                <div key={s.id} className="flex items-center gap-1 group">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => moveSubtask(t.id, s.id, 'up')}
+                      disabled={i === 0}
+                      className="text-2xs text-faint disabled:opacity-30 hover:opacity-100"
+                      title="上に移動"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      onClick={() => moveSubtask(t.id, s.id, 'down')}
+                      disabled={i === t.subtasks.length - 1}
+                      className="text-2xs text-faint disabled:opacity-30 hover:opacity-100"
+                      title="下に移動"
+                    >
+                      ▼
+                    </button>
+                  </div>
                   <button
                     onClick={() => toggleSubtask(t.id, s.id)}
-                    className={`w-3 h-3 rounded-sm border ${
+                    className={`w-3 h-3 rounded-sm border shrink-0 ${
                       s.done ? 'bg-accent border-accent' : 'border-mute'
                     }`}
                   />
-                  <span className={`flex-1 text-sm ${s.done ? 'line-through text-mute' : ''}`}>
-                    {s.title}
-                  </span>
+                  {editingSubtask?.id === s.id ? (
+                    <input
+                      value={editingSubtask.title}
+                      onChange={(e) => setEditingSubtask({ ...editingSubtask, title: e.target.value })}
+                      onBlur={() => {
+                        if (editingSubtask.title.trim() && editingSubtask.title !== s.title) {
+                          updateSubtask(t.id, s.id, editingSubtask.title);
+                        }
+                        setEditingSubtask(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur();
+                        if (e.key === 'Escape') setEditingSubtask(null);
+                      }}
+                      autoFocus
+                      className="flex-1 text-sm bg-transparent outline-none border-b border-border"
+                    />
+                  ) : (
+                    <span
+                      onClick={() => setEditingSubtask({ id: s.id, title: s.title })}
+                      className={`flex-1 text-sm cursor-text ${s.done ? 'line-through text-mute' : ''}`}
+                    >
+                      {s.title}
+                    </span>
+                  )}
                   <button
                     onClick={() => deleteSubtask(t.id, s.id)}
-                    className="text-2xs text-faint opacity-0 group-hover:opacity-100"
+                    className="text-2xs text-faint opacity-0 group-hover:opacity-100 shrink-0"
                   >
                     ×
                   </button>

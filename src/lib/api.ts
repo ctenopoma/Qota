@@ -33,6 +33,10 @@ export const api = {
     invoke<Subtask>('toggle_subtask', { taskId, subtaskId }),
   deleteSubtask: (taskId: string, subtaskId: string) =>
     invoke<void>('delete_subtask', { taskId, subtaskId }),
+  updateSubtask: (taskId: string, subtaskId: string, title: string) =>
+    invoke<Subtask>('update_subtask', { taskId, subtaskId, title }),
+  moveSubtask: (taskId: string, subtaskId: string, direction: 'up' | 'down') =>
+    invoke<Subtask[]>('move_subtask', { taskId, subtaskId, direction }),
 
   // ───── projects ─────
   createProject: (input: NewProject) =>

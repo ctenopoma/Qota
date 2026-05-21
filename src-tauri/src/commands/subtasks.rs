@@ -54,7 +54,7 @@ pub fn delete_subtask(state: State<'_, AppState>, task_id: String, subtask_id: S
         let t = data.tasks.iter_mut()
             .find(|t| t.id == task_id)
             .ok_or_else(|| Error::NotFound(format!("task {task_id}")))?;
-            
+
         let len = t.subtasks.len();
         t.subtasks.retain(|s| s.id != subtask_id);
         if t.subtasks.len() == len {
@@ -63,4 +63,60 @@ pub fn delete_subtask(state: State<'_, AppState>, task_id: String, subtask_id: S
         t.updated_at = Utc::now().to_rfc3339();
     }
     state.save()
+}
+
+#[tauri::command]
+pub fn update_subtask(
+    state: State<'_, AppState>,
+    task_id: String,
+    subtask_id: String,
+    title: String,
+) -> Result<Subtask> {
+    if title.trim().is_empty() {
+        return Err(Error::InvalidInput("subtask title is empty".into()));
+    }
+    let updated = {
+        let mut data = state.data.lock();
+        let t = data.tasks.iter_mut()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| Error::NotFound(format!("task {task_id}")))?;
+
+        let s = t.subtasks.iter_mut()
+            .find(|s| s.id == subtask_id)
+            .ok_or_else(|| Error::NotFound(format!("subtask {subtask_id}")))?;
+
+        s.title = title.trim().to_string();
+        t.updated_at = Utc::now().to_rfc3339();
+        s.clone()
+    };
+    state.save()?;
+    Ok(updated)
+}
+
+#[tauri::command]
+pub fn move_subtask(
+    state: State<'_, AppState>,
+    task_id: String,
+    subtask_id: String,
+    direction: String,
+) -> Result<Vec<Subtask>> {
+    let subtasks = {
+        let mut data = state.data.lock();
+        let t = data.tasks.iter_mut()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| Error::NotFound(format!("task {task_id}")))?;
+
+        let idx = t.subtasks.iter().position(|s| s.id == subtask_id)
+            .ok_or_else(|| Error::NotFound(format!("subtask {subtask_id}")))?;
+
+        match direction.as_str() {
+            "up" if idx > 0 => t.subtasks.swap(idx, idx - 1),
+            "down" if idx + 1 < t.subtasks.len() => t.subtasks.swap(idx, idx + 1),
+            _ => {}
+        }
+        t.updated_at = Utc::now().to_rfc3339();
+        t.subtasks.clone()
+    };
+    state.save()?;
+    Ok(subtasks)
 }

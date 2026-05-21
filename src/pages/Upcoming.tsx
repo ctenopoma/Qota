@@ -1,10 +1,25 @@
 import { useTaskStore } from '@/store/useTaskStore';
 import { isOverdue, isToday, isThisWeek, formatDue, sortByDue } from '@/lib/date';
-import type { Task } from '@/types';
+import type { Priority, Task } from '@/types';
 
 interface Props {
   onOpen: (id: string) => void;
 }
+
+const PRIORITY_ORDER: Record<string, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+  null: 3,
+};
+
+const sortByPriority = (tasks: Task[]): Task[] => {
+  return [...tasks].sort((a, b) => {
+    const pa = PRIORITY_ORDER[a.priority ?? 'null'];
+    const pb = PRIORITY_ORDER[b.priority ?? 'null'];
+    return pa - pb;
+  });
+};
 
 export default function Upcoming({ onOpen }: Props) {
   const tasks = useTaskStore((s) => s.tasks);
@@ -25,7 +40,7 @@ export default function Upcoming({ onOpen }: Props) {
       </header>
       <div className="flex-1 overflow-x-auto p-4 grid grid-flow-col auto-cols-[280px] gap-3">
         {buckets.map((b) => {
-          const items = sortByDue(tasks.filter(b.test));
+          const items = sortByPriority(sortByDue(tasks.filter(b.test)));
           return (
             <div key={b.key} className="bg-panel border border-border rounded flex flex-col">
               <div className="px-3 py-2 border-b border-border flex justify-between text-2xs font-mono uppercase tracking-widest">
