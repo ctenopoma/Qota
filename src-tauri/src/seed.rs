@@ -42,6 +42,9 @@ pub fn sample_data() -> AppData {
         created_at: now.clone(),
         updated_at: now.clone(),
         completed_at: None,
+        interval: None,
+        recurrence_id: None,
+        recurrence_end: None,
     };
 
     AppData {

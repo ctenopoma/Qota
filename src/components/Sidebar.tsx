@@ -86,6 +86,9 @@ export default function Sidebar({ route, onRoute, onCmd, onSearch, onNotif, onTo
             <button onClick={() => onRoute({ view: 'upcoming' })} className={navBtn(isActive((r) => r.view === 'upcoming'))}>
               今後
             </button>
+            <button onClick={() => onRoute({ view: 'calendar' })} className={navBtn(isActive((r) => r.view === 'calendar'))}>
+              カレンダー
+            </button>
           </nav>
 
           <div className="mt-2">
@@ -135,14 +138,6 @@ export default function Sidebar({ route, onRoute, onCmd, onSearch, onNotif, onTo
             </div>
           </div>
 
-          <nav className="flex flex-col gap-0.5 mt-auto">
-            <button onClick={() => onRoute({ view: 'tags' })} className={navBtn(isActive((r) => r.view === 'tags'))}>
-              タグ
-            </button>
-            <button onClick={() => onRoute({ view: 'settings' })} className={navBtn(isActive((r) => r.view === 'settings'))}>
-              設定
-            </button>
-          </nav>
         </>
       )}
 
@@ -170,13 +165,25 @@ export default function Sidebar({ route, onRoute, onCmd, onSearch, onNotif, onTo
         </nav>
       )}
 
-      <button
-        onClick={onToggleSidebar}
-        className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border mt-auto"
-        title={isOpen ? 'メニューを閉じる' : 'メニューを開く'}
-      >
-        {isOpen ? '◀' : '▶'}
-      </button>
+      <div className={`mt-auto flex flex-col gap-3 w-full ${!isOpen ? 'items-center' : 'items-start'}`}>
+        {isOpen && (
+          <nav className="flex flex-col gap-0.5 w-full">
+            <button onClick={() => onRoute({ view: 'tags' })} className={navBtn(isActive((r) => r.view === 'tags'))}>
+              タグ
+            </button>
+            <button onClick={() => onRoute({ view: 'settings' })} className={navBtn(isActive((r) => r.view === 'settings'))}>
+              設定
+            </button>
+          </nav>
+        )}
+        <button
+          onClick={onToggleSidebar}
+          className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border"
+          title={isOpen ? 'メニューを閉じる' : 'メニューを開く'}
+        >
+          {isOpen ? '◀' : '▶'}
+        </button>
+      </div>
     </aside>
   );
 }

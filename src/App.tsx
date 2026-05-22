@@ -9,6 +9,7 @@ import TaskDetail from '@/components/TaskDetail';
 import Today from '@/pages/Today';
 import Inbox from '@/pages/Inbox';
 import Upcoming from '@/pages/Upcoming';
+import Calendar from '@/pages/Calendar';
 import ProjectsList from '@/pages/ProjectsList';
 import ProjectDetail from '@/pages/ProjectDetail';
 import Tags from '@/pages/Tags';
@@ -92,6 +93,7 @@ export default function App() {
         {route.view === 'today' && <Today onOpen={setDetailId} />}
         {route.view === 'inbox' && <Inbox onOpen={setDetailId} />}
         {route.view === 'upcoming' && <Upcoming onOpen={setDetailId} />}
+        {route.view === 'calendar' && <Calendar onOpen={setDetailId} />}
         {route.view === 'projects' && (
           <ProjectsList onOpen={(id) => setRoute({ view: 'project', id })} />
         )}

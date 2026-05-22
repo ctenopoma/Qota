@@ -20,11 +20,13 @@ export default function TaskDetail({ id, onClose }: Props) {
 
   const [subInput, setSubInput] = useState('');
   const [titleInput, setTitleInput] = useState(task?.title ?? '');
+  const [notesInput, setNotesInput] = useState(task?.notes ?? '');
   const [editingSubtask, setEditingSubtask] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     if (task) {
       setTitleInput(task.title);
+      setNotesInput(task.notes);
     }
   }, [task?.id]);
 
@@ -88,6 +90,54 @@ export default function TaskDetail({ id, onClose }: Props) {
               className="bg-transparent border border-border rounded px-1 text-2xs font-mono"
             />
 
+            <span className="text-mute text-2xs font-mono pt-1">繰り返し</span>
+            <div className="flex flex-col gap-2 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer w-fit">
+                <input
+                  type="checkbox"
+                  checked={!!t.interval}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      updateTask(t.id, { interval: 'daily' });
+                    } else {
+                      updateTask(t.id, { interval: null });
+                    }
+                  }}
+                  className="accent-accent cursor-pointer"
+                />
+                <span className="text-xs">繰り返しを有効にする</span>
+              </label>
+
+              {!!t.interval && (
+                <div className="flex flex-col gap-2 pl-6 border-l-2 border-border/50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-mute w-12">頻度</span>
+                    <select
+                      value={t.interval}
+                      onChange={(e) => updateTask(t.id, { interval: e.target.value as any })}
+                      className="bg-transparent border border-border rounded px-1 text-2xs font-mono flex-1"
+                    >
+                      <option className="bg-panel text-ink" value="daily">毎日</option>
+                      <option className="bg-panel text-ink" value="weekdays">平日</option>
+                      <option className="bg-panel text-ink" value="weekly">毎週</option>
+                      <option className="bg-panel text-ink" value="monthly">毎月</option>
+                      <option className="bg-panel text-ink" value="yearly">毎年</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-mute w-12">終了日</span>
+                    <input
+                      type="date"
+                      value={t.recurrenceEnd ?? ''}
+                      onChange={(e) => updateTask(t.id, { recurrenceEnd: e.target.value || null })}
+                      className="bg-transparent border border-border rounded px-1 text-2xs font-mono flex-1"
+                      title="この日付までのタスクが一括で生成されます"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <span className="text-mute text-2xs font-mono pt-1">プロジェクト</span>
             <select
               value={t.projectId ?? ''}
@@ -128,8 +178,13 @@ export default function TaskDetail({ id, onClose }: Props) {
           <div>
             <div className="text-2xs font-mono uppercase tracking-widest text-faint mb-1">メモ</div>
             <textarea
-              value={t.notes}
-              onChange={(e) => updateTask(t.id, { notes: e.target.value })}
+              value={notesInput}
+              onChange={(e) => setNotesInput(e.target.value)}
+              onBlur={() => {
+                if (notesInput !== t.notes) {
+                  updateTask(t.id, { notes: notesInput });
+                }
+              }}
               rows={4}
               placeholder="メモを追加…"
               className="w-full bg-transparent border border-border rounded p-2 text-sm outline-none"

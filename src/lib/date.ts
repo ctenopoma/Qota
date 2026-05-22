@@ -55,6 +55,15 @@ export const isThisMonth = (iso: string | null): boolean => {
   return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
 };
 
+export const isNextMonth = (iso: string | null): boolean => {
+  if (!iso) return false;
+  const d = new Date(iso + 'T00:00:00');
+  const today = new Date();
+  const nextMonthYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+  const nextMonthMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+  return d.getFullYear() === nextMonthYear && d.getMonth() === nextMonthMonth;
+};
+
 export const formatDue = (iso: string | null): string => {
   if (!iso) return '';
   if (isToday(iso)) return '今日';

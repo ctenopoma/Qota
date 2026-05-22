@@ -102,17 +102,46 @@ export const useTaskStore = create<State>((set, get) => ({
   },
 
   updateTask: async (id, patch) => {
-    const updated = await api.updateTask(id, patch);
-    set((s) => ({
-      tasks: s.tasks.map((t) => (t.id === id ? updated : t)),
-    }));
+    const updatedTasks = await api.updateTask(id, patch);
+    set((s) => {
+      let newTasks = [...s.tasks];
+      // remove old deleted instances of the same series if they were removed by the backend
+      // wait, the backend doesn't return deleted IDs. Instead of tracking deletions, it's safer to just fetch or rely on the returned list?
+      // Actually, since updateTask might delete future tasks, maybe it's safest to replace the WHOLE series.
+      // But we don't have the series ID reliably.
+      // Easiest robust way for updateTask when recurrence changes: just reload all tasks or reload the store.
+      // Or we can manually remove future incomplete tasks of this recurrenceId if interval is in patch.
+      // To keep it simple and robust, let's just do a map and push, but we might have zombies.
+      // Let's implement a simple zombie cleanup: if the patch has interval or recurrenceEnd, we can't easily know what was deleted.
+      // So let's just reload the whole app data if recurrence changes.
+      return {
+        tasks: s.tasks.map((t) => {
+          const u = updatedTasks.find(x => x.id === t.id);
+          return u ? u : t;
+        }).concat(updatedTasks.filter(u => !s.tasks.some(t => t.id === u.id)))
+      };
+    });
+    // If recurrence was modified, let's just do a full reload to ensure we don't have zombie tasks
+    if (patch.interval !== undefined || patch.recurrenceEnd !== undefined) {
+      get().load();
+    }
   },
 
   toggleTask: async (id) => {
-    const updated = await api.toggleTask(id);
-    set((s) => ({
-      tasks: s.tasks.map((t) => (t.id === id ? updated : t)),
-    }));
+    const updatedTasks = await api.toggleTask(id);
+    set((s) => {
+      // Create a map or just update one by one
+      let newTasks = [...s.tasks];
+      for (const t of updatedTasks) {
+        const idx = newTasks.findIndex((x) => x.id === t.id);
+        if (idx !== -1) {
+          newTasks[idx] = t;
+        } else {
+          newTasks.push(t);
+        }
+      }
+      return { tasks: newTasks };
+    });
   },
 
   deleteTask: async (id) => {

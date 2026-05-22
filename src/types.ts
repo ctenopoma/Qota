@@ -49,7 +49,6 @@ export interface Settings {
   weekStart: 'mon' | 'sun';
 }
 
-/** バックエンドが返す丸ごとのスナップショット */
 export interface AppData {
   schemaVersion: number;
   tasks: Task[];
@@ -58,9 +57,29 @@ export interface AppData {
   settings: Settings;
 }
 
+export type Interval = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'weekdays';
+
+export interface Task {
+  id: string;
+  title: string;
+  notes: string;
+  status: TaskStatus;
+  priority: Priority;
+  due: string | null;
+  projectId: string | null;
+  tagIds: string[];
+  subtasks: Subtask[];
+  interval?: Interval | null;
+  recurrenceId?: string | null;
+  recurrenceEnd?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
 // 入力 DTO
 export type NewTask = Pick<Task, 'title'> &
-  Partial<Pick<Task, 'notes' | 'priority' | 'due' | 'projectId' | 'tagIds'>>;
+  Partial<Pick<Task, 'notes' | 'priority' | 'due' | 'projectId' | 'tagIds' | 'interval' | 'recurrenceId' | 'recurrenceEnd'>>;
 
 export type TaskPatch = Partial<
   Pick<
@@ -72,17 +91,19 @@ export type TaskPatch = Partial<
     | 'due'
     | 'projectId'
     | 'tagIds'
+    | 'interval'
+    | 'recurrenceEnd'
   >
 >;
 
 export type NewProject = Pick<Project, 'name'> & Partial<Pick<Project, 'color'>>;
 export type ProjectPatch = Partial<Pick<Project, 'name' | 'color' | 'archived'>>;
 
-// View ルーティング
 export type Route =
   | { view: 'today' }
   | { view: 'inbox' }
   | { view: 'upcoming' }
+  | { view: 'calendar' }
   | { view: 'projects' }
   | { view: 'project'; id: string }
   | { view: 'tags' }

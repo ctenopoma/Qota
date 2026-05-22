@@ -18,6 +18,9 @@ pub struct Task {
     pub created_at: String,            // RFC3339
     pub updated_at: String,
     pub completed_at: Option<String>,
+    pub interval: Option<Interval>,
+    pub recurrence_id: Option<String>,
+    pub recurrence_end: Option<String>, // YYYY-MM-DD
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -98,6 +101,30 @@ pub struct AppData {
     pub settings: Settings,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Interval {
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+    Weekdays,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecurringTask {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub notes: String,
+    pub priority: Option<Priority>,
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub tag_ids: Vec<String>,
+    pub interval: Interval,
+}
+
 // Input DTOs
 
 #[derive(Deserialize, Debug)]
@@ -114,6 +141,9 @@ pub struct NewTask {
     pub project_id: Option<String>,
     #[serde(default)]
     pub tag_ids: Option<Vec<String>>,
+    pub interval: Option<Interval>,
+    pub recurrence_id: Option<String>,
+    pub recurrence_end: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -129,6 +159,39 @@ pub struct TaskPatch {
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub project_id: Option<Option<String>>,
     pub tag_ids: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub interval: Option<Option<Interval>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub recurrence_end: Option<Option<String>>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct NewRecurringTask {
+    pub title: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub priority: Option<Priority>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub tag_ids: Option<Vec<String>>,
+    pub interval: Interval,
+    pub start_date: Option<String>, // YYYY-MM-DD
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RecurringTaskPatch {
+    pub title: Option<String>,
+    pub notes: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub priority: Option<Option<Priority>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub project_id: Option<Option<String>>,
+    pub tag_ids: Option<Vec<String>>,
+    pub interval: Option<Interval>,
 }
 
 #[derive(Deserialize, Debug)]

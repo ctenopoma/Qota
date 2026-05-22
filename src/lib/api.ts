@@ -22,9 +22,10 @@ export const api = {
   // ───── tasks ─────
   createTask: (input: NewTask) => invoke<Task>('create_task', { input }),
   updateTask: (id: string, patch: TaskPatch) =>
-    invoke<Task>('update_task', { id, patch }),
+    invoke<Task[]>('update_task', { id, patch }),
   deleteTask: (id: string) => invoke<void>('delete_task', { id }),
-  toggleTask: (id: string) => invoke<Task>('toggle_task', { id }),
+  toggleTask: (id: string) =>
+    invoke<Task[]>('toggle_task', { id }),
 
   // ───── subtasks ─────
   addSubtask: (taskId: string, title: string) =>

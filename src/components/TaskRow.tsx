@@ -22,10 +22,12 @@ export default function TaskRow({ task: t, onOpen }: Props) {
   const toggleTask = useTaskStore((s) => s.toggleTask);
   const updateTask = useTaskStore((s) => s.updateTask);
   const deleteTask = useTaskStore((s) => s.deleteTask);
+  const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
 
   const [hover, setHover] = useState(false);
   const [editingDue, setEditingDue] = useState(false);
   const [priOpen, setPriOpen] = useState(false);
+  const [showSubtasks, setShowSubtasks] = useState(false);
 
   const project = projects.find((p) => p.id === t.projectId);
   const taskTags = tags.filter((tag) => t.tagIds.includes(tag.id));
@@ -36,12 +38,13 @@ export default function TaskRow({ task: t, onOpen }: Props) {
   };
 
   return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="grid grid-cols-[24px_24px_1fr_auto_64px_24px] items-center gap-2 px-6 border-b border-border row-hover text-sm"
-      style={{ paddingTop: 'var(--row-pad, 7px)', paddingBottom: 'var(--row-pad, 7px)' }}
-    >
+    <>
+      <div
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        className="grid grid-cols-[24px_24px_1fr_auto_64px_24px] items-center gap-2 px-6 border-b border-border row-hover text-sm"
+        style={{ paddingTop: 'var(--row-pad, 7px)', paddingBottom: 'var(--row-pad, 7px)' }}
+      >
       <button
         onClick={() => toggleTask(t.id)}
         className={`w-3.5 h-3.5 rounded-sm border ${
@@ -74,16 +77,26 @@ export default function TaskRow({ task: t, onOpen }: Props) {
         )}
       </div>
 
-      <button onClick={() => onOpen(t.id)} className="text-left truncate">
-        <span className={t.status === 'done' ? 'line-through text-mute' : ''}>{t.title}</span>
+      <div className="flex items-center gap-2 truncate">
+        <button onClick={() => onOpen(t.id)} className="text-left truncate hover:underline">
+          <span className={t.status === 'done' ? 'line-through text-mute' : ''}>{t.title}</span>
+        </button>
         {t.subtasks.length > 0 && (
-          <span className="ml-2 text-2xs text-faint font-mono">
-            ⌘ {t.subtasks.filter((s) => s.done).length}/{t.subtasks.length}
-          </span>
+          <button 
+            onClick={() => setShowSubtasks(!showSubtasks)}
+            className="text-2xs text-faint font-mono hover:text-ink shrink-0 flex items-center gap-1"
+          >
+            {showSubtasks ? '▼' : '▶'} {t.subtasks.filter((s) => s.done).length}/{t.subtasks.length}
+          </button>
         )}
-      </button>
+      </div>
 
       <div className="flex gap-1">
+        {t.interval && (
+          <span className="text-2xs font-mono px-1.5 py-0.5 rounded border border-border text-mute" title={`繰り返し: ${t.interval}`}>
+            🔁
+          </span>
+        )}
         {project && (
           <span className="text-2xs font-mono px-1.5 py-0.5 rounded border border-border text-mute">
             {project.name}
@@ -126,6 +139,22 @@ export default function TaskRow({ task: t, onOpen }: Props) {
       >
         ×
       </button>
-    </div>
+      </div>
+
+      {showSubtasks && t.subtasks.length > 0 && (
+        <div className="bg-panel/50 px-6 py-2 border-b border-border pl-[80px]">
+          {t.subtasks.map((s) => (
+            <div key={s.id} className="flex items-center gap-2 py-0.5 text-sm">
+              <button
+                onClick={() => toggleSubtask(t.id, s.id)}
+                className={`w-3 h-3 rounded-sm border shrink-0 ${s.done ? 'bg-accent border-accent' : 'border-mute hover:border-ink'}`}
+                aria-label="toggle subtask"
+              />
+              <span className={s.done ? 'line-through text-mute' : 'text-faint'}>{s.title}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
