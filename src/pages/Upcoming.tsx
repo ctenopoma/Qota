@@ -24,17 +24,35 @@ const sortByPriority = (tasks: Task[]): Task[] => {
 
 function UpcomingTaskCard({ t, project, onOpen }: { t: Task; project: any; onOpen: (id: string) => void }) {
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const [editingEstimate, setEditingEstimate] = useState(false);
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
+  const toggleTask = useTaskStore((s) => s.toggleTask);
+  const updateTask = useTaskStore((s) => s.updateTask);
+  const startTimer = useTaskStore((s) => s.startTimer);
+  const stopTimer = useTaskStore((s) => s.stopTimer);
 
   return (
-    <div className="flex flex-col bg-bg border border-border rounded hover:border-mute overflow-hidden">
+    <div className="flex flex-col bg-bg border border-border rounded hover:border-mute overflow-hidden group">
       <div
         className="text-left text-sm px-2 py-1.5 cursor-pointer"
         onClick={() => onOpen(t.id)}
       >
         <div className="flex items-start justify-between gap-1">
-          <div className={t.status === 'done' ? 'line-through text-mute truncate' : 'truncate'}>
-            {t.title}
+          <div className="flex items-center gap-1.5 truncate">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleTask(t.id);
+              }}
+              className={`w-3.5 h-3.5 rounded-sm border shrink-0 ${
+                t.status === 'done' ? 'bg-accent border-accent' : 'border-mute hover:border-ink'
+              }`}
+              aria-label="toggle"
+            />
+            <div className={t.status === 'done' ? 'line-through text-mute truncate' : 'truncate'}>
+              {t.title}
+            </div>
           </div>
           {t.subtasks.length > 0 && (
             <button 
@@ -46,19 +64,92 @@ function UpcomingTaskCard({ t, project, onOpen }: { t: Task; project: any; onOpe
           )}
         </div>
         <div className="flex items-center justify-between mt-0.5">
-          {project ? (
-            <span className="text-2xs font-mono px-1 py-0.5 rounded border border-border text-mute inline-flex items-center gap-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {project && (
+              <span className="text-2xs font-mono px-1 py-0.5 rounded border border-border text-mute inline-flex items-center gap-1">
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: project.color }}
+                />
+                {project.name}
+              </span>
+            )}
+            {t.estimatedMinutes != null && t.status === 'done' && t.actualMinutes != null && (
               <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ background: project.color }}
-              />
-              {project.name}
-            </span>
-          ) : (
-            <div />
-          )}
+                className={`text-2xs font-mono px-1 py-0.5 rounded border ${
+                  t.actualMinutes <= t.estimatedMinutes
+                    ? 'border-accent/40 text-accent'
+                    : 'border-high/40 text-high'
+                }`}
+              >
+                {t.actualMinutes <= t.estimatedMinutes
+                  ? `-${t.estimatedMinutes - t.actualMinutes}m`
+                  : `+${t.actualMinutes - t.estimatedMinutes}m`}
+              </span>
+            )}
+            {t.startedAt && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  stopTimer(t.id);
+                }}
+                className="text-2xs font-mono px-1 py-0.5 rounded border border-accent/40 text-accent animate-pulse hover:border-accent hover:bg-accent/10"
+              >
+                ⏹ 計測中
+              </button>
+            )}
+            {t.estimatedMinutes != null && t.status !== 'done' && !t.startedAt && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  startTimer(t.id);
+                }}
+                className="text-2xs font-mono px-1 py-0.5 rounded border border-border text-mute hover:text-ink hover:border-mute flex items-center gap-1"
+              >
+                <span>▶</span>
+                <span>{t.estimatedMinutes >= 60 ? `${t.estimatedMinutes / 60}h` : `${t.estimatedMinutes}m`}</span>
+              </button>
+            )}
+            {t.estimatedMinutes == null && t.status !== 'done' && (
+              editingEstimate ? (
+                <select
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-panel border border-border rounded px-0.5 text-2xs font-mono w-14"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      updateTask(t.id, { estimatedMinutes: Number(e.target.value) });
+                    }
+                    setEditingEstimate(false);
+                  }}
+                  onBlur={() => setEditingEstimate(false)}
+                >
+                  <option value="">-</option>
+                  {[30, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480].map((m) => (
+                    <option className="bg-panel text-ink" key={m} value={m}>
+                      {m >= 60 ? `${m / 60}h` : `${m}m`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditingEstimate(true);
+                  }}
+                  className="text-2xs font-mono px-1 py-0.5 rounded border border-transparent text-faint hover:text-ink opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="見積もりを追加"
+                >
+                  ⏱
+                </button>
+              )
+            )}
+          </div>
           {t.due && (
-            <div className="text-2xs font-mono text-faint ml-auto">
+            <div className="text-2xs font-mono text-faint ml-auto shrink-0 pl-1">
               {formatDue(t.due)}
             </div>
           )}

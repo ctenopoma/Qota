@@ -25,6 +25,9 @@ export interface Task {
   updatedAt: string;
   /** ISO 8601 datetime, null if not done */
   completedAt: string | null;
+  estimatedMinutes?: number | null;
+  actualMinutes?: number | null;
+  startedAt?: string | null;
 }
 
 export interface Project {
@@ -75,11 +78,14 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  estimatedMinutes?: number | null;
+  actualMinutes?: number | null;
+  startedAt?: string | null;
 }
 
 // 入力 DTO
 export type NewTask = Pick<Task, 'title'> &
-  Partial<Pick<Task, 'notes' | 'priority' | 'due' | 'projectId' | 'tagIds' | 'interval' | 'recurrenceId' | 'recurrenceEnd'>>;
+  Partial<Pick<Task, 'notes' | 'priority' | 'due' | 'projectId' | 'tagIds' | 'interval' | 'recurrenceId' | 'recurrenceEnd' | 'estimatedMinutes'>>;
 
 export type TaskPatch = Partial<
   Pick<
@@ -93,6 +99,9 @@ export type TaskPatch = Partial<
     | 'tagIds'
     | 'interval'
     | 'recurrenceEnd'
+    | 'estimatedMinutes'
+    | 'actualMinutes'
+    | 'startedAt'
   >
 >;
 
@@ -107,4 +116,5 @@ export type Route =
   | { view: 'projects' }
   | { view: 'project'; id: string }
   | { view: 'tags' }
-  | { view: 'settings' };
+  | { view: 'settings' }
+  | { view: 'insights' };

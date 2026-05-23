@@ -45,6 +45,9 @@ pub fn sample_data() -> AppData {
         interval: None,
         recurrence_id: None,
         recurrence_end: None,
+        estimated_minutes: None,
+        actual_minutes: None,
+        started_at: None,
     };
 
     AppData {

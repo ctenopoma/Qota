@@ -15,6 +15,12 @@ pub struct Task {
     pub tag_ids: Vec<String>,
     #[serde(default)]
     pub subtasks: Vec<Subtask>,
+    #[serde(default)]
+    pub estimated_minutes: Option<u32>,
+    #[serde(default)]
+    pub actual_minutes: Option<u32>,
+    #[serde(default)]
+    pub started_at: Option<String>,      // RFC3339, non-null while timer is running
     pub created_at: String,            // RFC3339
     pub updated_at: String,
     pub completed_at: Option<String>,
@@ -144,6 +150,8 @@ pub struct NewTask {
     pub interval: Option<Interval>,
     pub recurrence_id: Option<String>,
     pub recurrence_end: Option<String>,
+    #[serde(default)]
+    pub estimated_minutes: Option<u32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -163,6 +171,12 @@ pub struct TaskPatch {
     pub interval: Option<Option<Interval>>,
     #[serde(default, deserialize_with = "deserialize_optional_field")]
     pub recurrence_end: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub estimated_minutes: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub actual_minutes: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub started_at: Option<Option<String>>,
 }
 
 #[derive(Deserialize, Debug)]

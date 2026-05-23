@@ -12,16 +12,20 @@ export default function TaskDetail({ id, onClose }: Props) {
   const tags = useTaskStore((s) => s.tags);
   const updateTask = useTaskStore((s) => s.updateTask);
   const deleteTask = useTaskStore((s) => s.deleteTask);
+  const duplicateTask = useTaskStore((s) => s.duplicateTask);
   const addSubtask = useTaskStore((s) => s.addSubtask);
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
   const deleteSubtask = useTaskStore((s) => s.deleteSubtask);
   const updateSubtask = useTaskStore((s) => s.updateSubtask);
   const moveSubtask = useTaskStore((s) => s.moveSubtask);
+  const startTimer = useTaskStore((s) => s.startTimer);
+  const stopTimer = useTaskStore((s) => s.stopTimer);
 
   const [subInput, setSubInput] = useState('');
   const [titleInput, setTitleInput] = useState(task?.title ?? '');
   const [notesInput, setNotesInput] = useState(task?.notes ?? '');
   const [editingSubtask, setEditingSubtask] = useState<{ id: string; title: string } | null>(null);
+  const [elapsedDisplay, setElapsedDisplay] = useState('');
 
   useEffect(() => {
     if (task) {
@@ -29,6 +33,19 @@ export default function TaskDetail({ id, onClose }: Props) {
       setNotesInput(task.notes);
     }
   }, [task?.id]);
+
+  useEffect(() => {
+    if (!task?.startedAt) { setElapsedDisplay(''); return; }
+    const tick = () => {
+      const mins = Math.floor((Date.now() - new Date(task.startedAt!).getTime()) / 60000);
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      setElapsedDisplay(h > 0 ? `${h}h ${m}m` : `${m}m`);
+    };
+    tick();
+    const iv = setInterval(tick, 15000);
+    return () => clearInterval(iv);
+  }, [task?.startedAt]);
 
   if (!task) {
     return null;
@@ -133,6 +150,100 @@ export default function TaskDetail({ id, onClose }: Props) {
                       className="bg-transparent border border-border rounded px-1 text-2xs font-mono flex-1"
                       title="この日付までのタスクが一括で生成されます"
                     />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <span className="text-mute text-2xs font-mono pt-1">見積もり</span>
+            <div className="flex flex-col gap-2 text-sm">
+              {t.estimatedMinutes == null ? (
+                <button
+                  onClick={() => updateTask(t.id, { estimatedMinutes: 30 })}
+                  className="text-left text-2xs font-mono text-faint hover:text-ink"
+                >
+                  ⏱ 見積もりを追加
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={t.estimatedMinutes}
+                    onChange={(e) =>
+                      updateTask(t.id, { estimatedMinutes: Number(e.target.value) })
+                    }
+                    className="bg-transparent border border-border rounded px-1 text-2xs font-mono"
+                  >
+                    {[30, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480].map((m) => (
+                      <option className="bg-panel text-ink" key={m} value={m}>
+                        {m >= 60 ? `${m / 60}h` : `${m}m`}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => updateTask(t.id, { estimatedMinutes: null })}
+                    className="text-2xs text-faint hover:text-high"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
+              {t.estimatedMinutes != null && (
+                <div className="flex flex-col gap-1.5 pl-6 border-l-2 border-border/50">
+                  {/* Timer */}
+                  {t.status !== 'done' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-mute w-12">計測</span>
+                      {t.startedAt ? (
+                        <>
+                          <span className="text-2xs font-mono text-accent animate-pulse">
+                            ● {elapsedDisplay || '0m'}
+                          </span>
+                          <button
+                            onClick={() => stopTimer(t.id)}
+                            className="text-2xs font-mono text-faint hover:text-ink border border-border rounded px-1.5 py-0.5"
+                          >
+                            ⏹ 停止
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => startTimer(t.id)}
+                          className="text-2xs font-mono text-faint hover:text-ink border border-border rounded px-1.5 py-0.5"
+                        >
+                          ▶ 開始
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {/* Actual time */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-mute w-12">実績</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5"
+                      value={t.actualMinutes ?? ''}
+                      onChange={(e) =>
+                        updateTask(t.id, {
+                          actualMinutes: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                      placeholder="分"
+                      className="bg-transparent border border-border rounded px-1 text-2xs font-mono w-16"
+                    />
+                    <span className="text-2xs text-faint">分</span>
+                    {t.status === 'done' && t.actualMinutes != null && (
+                      <span
+                        className={`text-2xs font-mono ${
+                          t.actualMinutes <= t.estimatedMinutes! ? 'text-accent' : 'text-high'
+                        }`}
+                      >
+                        {t.actualMinutes <= t.estimatedMinutes!
+                          ? `${t.estimatedMinutes! - t.actualMinutes}分 短縮 🎉`
+                          : `${t.actualMinutes - t.estimatedMinutes!}分 オーバー`}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -272,7 +383,16 @@ export default function TaskDetail({ id, onClose }: Props) {
           </div>
         </div>
 
-        <footer className="px-4 py-2 border-t border-border">
+        <footer className="px-4 py-2 border-t border-border flex items-center justify-between">
+          <button
+            onClick={() => {
+              duplicateTask(t.id);
+              onClose();
+            }}
+            className="text-2xs font-mono text-faint hover:text-ink hover:underline"
+          >
+            タスクを複製
+          </button>
           <button
             onClick={() => {
               if (confirm('削除しますか？')) {

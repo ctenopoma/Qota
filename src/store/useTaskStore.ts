@@ -32,7 +32,10 @@ interface State {
   addTask: (input: NewTask) => Promise<Task>;
   updateTask: (id: string, patch: TaskPatch) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
+  startTimer: (id: string) => Promise<void>;
+  stopTimer: (id: string) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  duplicateTask: (id: string) => Promise<void>;
 
   // ─ subtasks ─
   addSubtask: (taskId: string, title: string) => Promise<void>;
@@ -102,28 +105,38 @@ export const useTaskStore = create<State>((set, get) => ({
   },
 
   updateTask: async (id, patch) => {
-    const updatedTasks = await api.updateTask(id, patch);
-    set((s) => {
-      let newTasks = [...s.tasks];
-      // remove old deleted instances of the same series if they were removed by the backend
-      // wait, the backend doesn't return deleted IDs. Instead of tracking deletions, it's safer to just fetch or rely on the returned list?
-      // Actually, since updateTask might delete future tasks, maybe it's safest to replace the WHOLE series.
-      // But we don't have the series ID reliably.
-      // Easiest robust way for updateTask when recurrence changes: just reload all tasks or reload the store.
-      // Or we can manually remove future incomplete tasks of this recurrenceId if interval is in patch.
-      // To keep it simple and robust, let's just do a map and push, but we might have zombies.
-      // Let's implement a simple zombie cleanup: if the patch has interval or recurrenceEnd, we can't easily know what was deleted.
-      // So let's just reload the whole app data if recurrence changes.
-      return {
-        tasks: s.tasks.map((t) => {
-          const u = updatedTasks.find(x => x.id === t.id);
-          return u ? u : t;
-        }).concat(updatedTasks.filter(u => !s.tasks.some(t => t.id === u.id)))
-      };
-    });
-    // If recurrence was modified, let's just do a full reload to ensure we don't have zombie tasks
-    if (patch.interval !== undefined || patch.recurrenceEnd !== undefined) {
-      get().load();
+    try {
+      const updatedTasks = await api.updateTask(id, patch);
+      set((s) => {
+        const primaryTask = updatedTasks.find(x => x.id === id) || s.tasks.find(x => x.id === id);
+        const rid = primaryTask?.recurrenceId;
+        
+        let newTasks = s.tasks;
+        if (rid && updatedTasks.length > 1) {
+          const currentDue = primaryTask?.due || '';
+          // Remove old future uncompleted instances (zombie cleanup) matching the backend
+          newTasks = newTasks.filter(t => {
+            if (t.id === id) return true; // keep the task being updated
+            if (t.recurrenceId === rid && t.status === 'todo') {
+              const xDue = t.due || '';
+              if (xDue > currentDue) return false; // remove strictly future instances
+            }
+            return true;
+          });
+        }
+
+        return {
+          tasks: newTasks.map((t) => {
+            const u = updatedTasks.find(x => x.id === t.id);
+            return u ? u : t;
+          }).concat(updatedTasks.filter(u => !newTasks.some(t => t.id === u.id)))
+        };
+      });
+      if (patch.interval !== undefined || patch.recurrenceEnd !== undefined) {
+        get().load();
+      }
+    } catch (e: any) {
+      console.error("updateTask error:", e);
     }
   },
 
@@ -144,9 +157,52 @@ export const useTaskStore = create<State>((set, get) => ({
     });
   },
 
+  startTimer: async (id) => {
+    try {
+      const now = new Date().toISOString();
+      await get().updateTask(id, { startedAt: now });
+    } catch (e: any) {
+      console.error("startTimer error:", e);
+    }
+  },
+
+  stopTimer: async (id) => {
+    try {
+      const task = get().tasks.find((t) => t.id === id);
+      if (!task?.startedAt) return;
+      const elapsed = Math.round((Date.now() - new Date(task.startedAt).getTime()) / 60000);
+      const newActual = (task.actualMinutes ?? 0) + Math.max(elapsed, 1);
+      await get().updateTask(id, { actualMinutes: newActual, startedAt: null });
+    } catch (e: any) {
+      console.error("stopTimer error:", e);
+    }
+  },
+
   deleteTask: async (id) => {
     await api.deleteTask(id);
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) }));
+  },
+
+  duplicateTask: async (id) => {
+    const s = get();
+    const t = s.tasks.find((x) => x.id === id);
+    if (!t) return;
+    
+    const nt = await s.addTask({
+      title: t.title + ' (コピー)',
+      notes: t.notes,
+      priority: t.priority,
+      due: t.due,
+      projectId: t.projectId,
+      tagIds: t.tagIds,
+      interval: t.interval,
+      recurrenceEnd: t.recurrenceEnd,
+      recurrenceId: t.recurrenceId,
+    });
+    
+    for (const sub of t.subtasks) {
+      await s.addSubtask(nt.id, sub.title);
+    }
   },
 
   // ── subtasks ──

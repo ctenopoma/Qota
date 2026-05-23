@@ -14,6 +14,7 @@ import ProjectsList from '@/pages/ProjectsList';
 import ProjectDetail from '@/pages/ProjectDetail';
 import Tags from '@/pages/Tags';
 import Settings from '@/pages/Settings';
+import Insights from '@/pages/Insights';
 
 export default function App() {
   const load = useTaskStore((s) => s.load);
@@ -102,6 +103,7 @@ export default function App() {
         )}
         {route.view === 'tags' && <Tags onOpen={setDetailId} />}
         {route.view === 'settings' && <Settings />}
+        {route.view === 'insights' && <Insights />}
       </main>
 
       {cmdOpen && (

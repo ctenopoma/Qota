@@ -22,12 +22,16 @@ export default function TaskRow({ task: t, onOpen }: Props) {
   const toggleTask = useTaskStore((s) => s.toggleTask);
   const updateTask = useTaskStore((s) => s.updateTask);
   const deleteTask = useTaskStore((s) => s.deleteTask);
+  const duplicateTask = useTaskStore((s) => s.duplicateTask);
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
+  const startTimer = useTaskStore((s) => s.startTimer);
+  const stopTimer = useTaskStore((s) => s.stopTimer);
 
   const [hover, setHover] = useState(false);
   const [editingDue, setEditingDue] = useState(false);
   const [priOpen, setPriOpen] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const [editingEstimate, setEditingEstimate] = useState(false);
 
   const project = projects.find((p) => p.id === t.projectId);
   const taskTags = tags.filter((tag) => t.tagIds.includes(tag.id));
@@ -46,7 +50,11 @@ export default function TaskRow({ task: t, onOpen }: Props) {
         style={{ paddingTop: 'var(--row-pad, 7px)', paddingBottom: 'var(--row-pad, 7px)' }}
       >
       <button
-        onClick={() => toggleTask(t.id)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleTask(t.id);
+        }}
         className={`w-3.5 h-3.5 rounded-sm border ${
           t.status === 'done' ? 'bg-accent border-accent' : 'border-mute hover:border-ink'
         }`}
@@ -97,6 +105,80 @@ export default function TaskRow({ task: t, onOpen }: Props) {
             🔁
           </span>
         )}
+        {t.estimatedMinutes != null && t.status === 'done' && t.actualMinutes != null && (
+          <span
+            className={`text-2xs font-mono px-1.5 py-0.5 rounded border ${
+              t.actualMinutes <= t.estimatedMinutes
+                ? 'border-accent/40 text-accent'
+                : 'border-high/40 text-high'
+            }`}
+          >
+            {t.actualMinutes <= t.estimatedMinutes
+              ? `-${t.estimatedMinutes - t.actualMinutes}m`
+              : `+${t.actualMinutes - t.estimatedMinutes}m`}
+          </span>
+        )}
+        {t.startedAt && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              stopTimer(t.id);
+            }}
+            className="text-2xs font-mono px-1.5 py-0.5 rounded border border-accent/40 text-accent animate-pulse hover:border-accent hover:bg-accent/10"
+            title="計測を停止"
+          >
+            ⏹ 計測中
+          </button>
+        )}
+        {t.estimatedMinutes != null && t.status !== 'done' && !t.startedAt && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              startTimer(t.id);
+            }}
+            className="text-2xs font-mono px-1.5 py-0.5 rounded border border-border text-mute hover:text-ink hover:border-mute flex items-center gap-1"
+            title="計測を開始"
+          >
+            <span>▶</span>
+            <span>{t.estimatedMinutes >= 60 ? `${t.estimatedMinutes / 60}h` : `${t.estimatedMinutes}m`}</span>
+          </button>
+        )}
+        {t.estimatedMinutes == null && t.status !== 'done' && (
+          editingEstimate ? (
+            <select
+              autoFocus
+              className="bg-transparent border border-border rounded px-1 py-0.5 text-2xs font-mono w-16"
+              onChange={(e) => {
+                if (e.target.value) {
+                  updateTask(t.id, { estimatedMinutes: Number(e.target.value) });
+                }
+                setEditingEstimate(false);
+              }}
+              onBlur={() => setEditingEstimate(false)}
+            >
+              <option value="">-</option>
+              {[30, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480].map((m) => (
+                <option className="bg-panel text-ink" key={m} value={m}>
+                  {m >= 60 ? `${m / 60}h` : `${m}m`}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setEditingEstimate(true);
+              }}
+              className={`text-2xs font-mono px-1.5 py-0.5 rounded border border-transparent text-faint hover:text-ink ${hover ? 'opacity-100' : 'opacity-0'}`}
+              title="見積もりを追加"
+            >
+              ⏱
+            </button>
+          )
+        )}
         {project && (
           <span className="text-2xs font-mono px-1.5 py-0.5 rounded border border-border text-mute">
             {project.name}
@@ -131,14 +213,30 @@ export default function TaskRow({ task: t, onOpen }: Props) {
         </button>
       )}
 
-      <button
-        onClick={() => {
-          if (confirm('削除しますか？')) deleteTask(t.id);
-        }}
-        className={`text-2xs text-faint hover:text-high ${hover ? 'opacity-100' : 'opacity-0'}`}
-      >
-        ×
-      </button>
+      <div className={`flex items-center gap-2 ${hover ? 'opacity-100' : 'opacity-0'}`}>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            duplicateTask(t.id);
+          }}
+          className="text-2xs text-faint hover:text-ink"
+          title="複製"
+        >
+          ⧉
+        </button>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (confirm('削除しますか？')) deleteTask(t.id);
+          }}
+          className="text-2xs text-faint hover:text-high"
+          title="削除"
+        >
+          ×
+        </button>
+      </div>
       </div>
 
       {showSubtasks && t.subtasks.length > 0 && (

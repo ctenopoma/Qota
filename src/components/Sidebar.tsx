@@ -89,6 +89,9 @@ export default function Sidebar({ route, onRoute, onCmd, onSearch, onNotif, onTo
             <button onClick={() => onRoute({ view: 'calendar' })} className={navBtn(isActive((r) => r.view === 'calendar'))}>
               カレンダー
             </button>
+            <button onClick={() => onRoute({ view: 'insights' })} className={navBtn(isActive((r) => r.view === 'insights'))}>
+              インサイト
+            </button>
           </nav>
 
           <div className="mt-2">

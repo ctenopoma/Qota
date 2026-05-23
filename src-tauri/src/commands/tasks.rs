@@ -62,6 +62,9 @@ pub fn create_task(state: State<'_, AppState>, input: NewTask) -> Result<Task> {
         created_at: now.clone(),
         updated_at: now,
         completed_at: None,
+        estimated_minutes: input.estimated_minutes,
+        actual_minutes: None,
+        started_at: None,
         interval: input.interval.clone(),
         recurrence_id: input.recurrence_id.clone(),
         recurrence_end: input.recurrence_end.clone(),
@@ -110,6 +113,16 @@ pub fn update_task(state: State<'_, AppState>, id: String, patch: TaskPatch) -> 
             
         let old_recurrence_id = data.tasks[t_idx].recurrence_id.clone();
         
+        let series_changed = patch.title.is_some()
+            || patch.notes.is_some()
+            || patch.priority.is_some()
+            || patch.due.is_some()
+            || patch.project_id.is_some()
+            || patch.tag_ids.is_some()
+            || patch.interval.is_some()
+            || patch.recurrence_end.is_some()
+            || patch.estimated_minutes.is_some();
+
         {
             let t = &mut data.tasks[t_idx];
             if let Some(v) = patch.title    { t.title = v; }
@@ -121,6 +134,9 @@ pub fn update_task(state: State<'_, AppState>, id: String, patch: TaskPatch) -> 
             if let Some(v) = patch.tag_ids  { t.tag_ids = v; }
             if let Some(v) = patch.interval { t.interval = v; }
             if let Some(v) = patch.recurrence_end { t.recurrence_end = v; }
+            if let Some(v) = patch.estimated_minutes { t.estimated_minutes = v; }
+            if let Some(v) = patch.actual_minutes { t.actual_minutes = v; }
+            if let Some(v) = patch.started_at { t.started_at = v; }
             t.updated_at = Utc::now().to_rfc3339();
             
             // Assign recurrence_id if turning on recurrence for the first time
@@ -136,31 +152,38 @@ pub fn update_task(state: State<'_, AppState>, id: String, patch: TaskPatch) -> 
         
         let t = data.tasks[t_idx].clone();
         
-        // We always clear out all future uncompleted instances of the old series
-        if let Some(rid) = &old_recurrence_id {
-            data.tasks.retain(|x| {
-                if x.id == t.id { return true; }
-                if x.recurrence_id.as_deref() == Some(rid) && x.status == TaskStatus::Todo {
-                    return false;
-                }
-                true
-            });
-        }
-            
-        // If recurrence is active, regenerate future incomplete tasks
-        if let Some(_rid) = &t.recurrence_id {
-            
-            if let (Some(interval), Some(due), Some(end_date)) = (&t.interval, &t.due, &t.recurrence_end) {
-                let mut current_due = due.clone();
-                while let Some(next_due) = calculate_next_date(&current_due, interval) {
-                    if next_due > *end_date {
-                        break;
+        if series_changed {
+            if let Some(rid) = &old_recurrence_id {
+                let current_due = t.due.clone().unwrap_or_default();
+                data.tasks.retain(|x| {
+                    if x.id == t.id { return true; }
+                    if x.recurrence_id.as_deref() == Some(rid) && x.status == TaskStatus::Todo {
+                        let x_due = x.due.clone().unwrap_or_default();
+                        if x_due > current_due {
+                            return false;
+                        }
                     }
-                    let mut nt = t.clone();
-                    nt.id = Uuid::new_v4().to_string();
-                    nt.due = Some(next_due.clone());
-                    generated.push(nt);
-                    current_due = next_due;
+                    true
+                });
+            }
+                
+            if let Some(_rid) = &t.recurrence_id {
+                if let (Some(interval), Some(due), Some(end_date)) = (&t.interval, &t.due, &t.recurrence_end) {
+                    let mut current_due = due.clone();
+                    while let Some(next_due) = calculate_next_date(&current_due, interval) {
+                        if next_due > *end_date {
+                            break;
+                        }
+                        let mut nt = t.clone();
+                        nt.id = Uuid::new_v4().to_string();
+                        nt.due = Some(next_due.clone());
+                        nt.status = TaskStatus::Todo;
+                        nt.completed_at = None;
+                        nt.started_at = None;
+                        nt.actual_minutes = None;
+                        generated.push(nt);
+                        current_due = next_due;
+                    }
                 }
             }
         }
@@ -193,10 +216,22 @@ pub fn toggle_task(state: State<'_, AppState>, id: String) -> Result<Vec<Task>> 
             TaskStatus::Todo => {
                 data.tasks[idx].status = TaskStatus::Done;
                 data.tasks[idx].completed_at = Some(now.clone());
+                // If timer was running, calculate actual_minutes from started_at
+                if let Some(ref started) = data.tasks[idx].started_at {
+                    if let Ok(start_time) = chrono::DateTime::parse_from_rfc3339(started) {
+                        let elapsed = Utc::now().signed_duration_since(start_time);
+                        let mins = elapsed.num_minutes().max(1) as u32;
+                        // Add to existing actual_minutes or set new
+                        let existing = data.tasks[idx].actual_minutes.unwrap_or(0);
+                        data.tasks[idx].actual_minutes = Some(existing + mins);
+                    }
+                    data.tasks[idx].started_at = None;
+                }
             }
             TaskStatus::Done => {
                 data.tasks[idx].status = TaskStatus::Todo;
                 data.tasks[idx].completed_at = None;
+                data.tasks[idx].started_at = None;
             }
         }
         data.tasks[idx].updated_at = now;
