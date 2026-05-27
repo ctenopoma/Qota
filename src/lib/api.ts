@@ -10,6 +10,7 @@ import type {
   ProjectPatch,
   Settings,
   Subtask,
+  SubtaskPatch,
   Tag,
   Task,
   TaskPatch,
@@ -34,10 +35,14 @@ export const api = {
     invoke<Subtask>('toggle_subtask', { taskId, subtaskId }),
   deleteSubtask: (taskId: string, subtaskId: string) =>
     invoke<void>('delete_subtask', { taskId, subtaskId }),
-  updateSubtask: (taskId: string, subtaskId: string, title: string) =>
-    invoke<Subtask>('update_subtask', { taskId, subtaskId, title }),
+  updateSubtask: (taskId: string, subtaskId: string, patch: SubtaskPatch) =>
+    invoke<Subtask>('update_subtask', { taskId, subtaskId, patch }),
   moveSubtask: (taskId: string, subtaskId: string, direction: 'up' | 'down') =>
     invoke<Subtask[]>('move_subtask', { taskId, subtaskId, direction }),
+  startSubtaskTimer: (taskId: string, subtaskId: string) =>
+    invoke<Subtask>('start_subtask_timer', { taskId, subtaskId }),
+  stopSubtaskTimer: (taskId: string, subtaskId: string) =>
+    invoke<Subtask>('stop_subtask_timer', { taskId, subtaskId }),
 
   // ───── projects ─────
   createProject: (input: NewProject) =>

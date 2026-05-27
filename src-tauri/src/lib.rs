@@ -33,6 +33,8 @@ pub fn run() {
             commands::subtasks::delete_subtask,
             commands::subtasks::update_subtask,
             commands::subtasks::move_subtask,
+            commands::subtasks::start_subtask_timer,
+            commands::subtasks::stop_subtask_timer,
             commands::projects::create_project,
             commands::projects::update_project,
             commands::projects::delete_project,

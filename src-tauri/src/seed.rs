@@ -36,8 +36,8 @@ pub fn sample_data() -> AppData {
         project_id: Some(p_api.id.clone()),
         tag_ids: vec![t_urgent.id.clone()],
         subtasks: vec![
-            Subtask { id: Uuid::new_v4().to_string(), title: "概要".into(), done: false },
-            Subtask { id: Uuid::new_v4().to_string(), title: "エンドポイント一覧".into(), done: false },
+            Subtask { id: Uuid::new_v4().to_string(), title: "概要".into(), done: false, estimated_minutes: None, actual_minutes: None, started_at: None },
+            Subtask { id: Uuid::new_v4().to_string(), title: "エンドポイント一覧".into(), done: false, estimated_minutes: None, actual_minutes: None, started_at: None },
         ],
         created_at: now.clone(),
         updated_at: now.clone(),

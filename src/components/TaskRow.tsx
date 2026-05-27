@@ -32,6 +32,9 @@ export default function TaskRow({ task: t, onOpen }: Props) {
   const [priOpen, setPriOpen] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [editingEstimate, setEditingEstimate] = useState(false);
+  const startSubtaskTimer = useTaskStore((s) => s.startSubtaskTimer);
+  const stopSubtaskTimer = useTaskStore((s) => s.stopSubtaskTimer);
+  const updateSubtask = useTaskStore((s) => s.updateSubtask);
 
   const project = projects.find((p) => p.id === t.projectId);
   const taskTags = tags.filter((tag) => t.tagIds.includes(tag.id));
@@ -242,13 +245,45 @@ export default function TaskRow({ task: t, onOpen }: Props) {
       {showSubtasks && t.subtasks.length > 0 && (
         <div className="bg-panel/50 px-6 py-2 border-b border-border pl-[80px]">
           {t.subtasks.map((s) => (
-            <div key={s.id} className="flex items-center gap-2 py-0.5 text-sm">
+            <div key={s.id} className="flex items-center gap-2 py-0.5 text-sm group">
               <button
                 onClick={() => toggleSubtask(t.id, s.id)}
                 className={`w-3 h-3 rounded-sm border shrink-0 ${s.done ? 'bg-accent border-accent' : 'border-mute hover:border-ink'}`}
                 aria-label="toggle subtask"
               />
-              <span className={s.done ? 'line-through text-mute' : 'text-faint'}>{s.title}</span>
+              <span className={`flex-1 truncate ${s.done ? 'line-through text-mute' : 'text-faint'}`}>{s.title}</span>
+              {s.actualMinutes != null && s.actualMinutes > 0 && (
+                <span
+                  className={`text-2xs font-mono shrink-0 ${
+                    s.estimatedMinutes != null && s.actualMinutes <= s.estimatedMinutes
+                      ? 'text-accent'
+                      : s.estimatedMinutes != null
+                      ? 'text-high'
+                      : 'text-faint'
+                  }`}
+                  title="実績時間"
+                >
+                  実: {s.actualMinutes >= 60 ? `${Math.floor(s.actualMinutes / 60)}h${s.actualMinutes % 60 ? ` ${s.actualMinutes % 60}m` : ''}` : `${s.actualMinutes}m`}
+                </span>
+              )}
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (s.startedAt) {
+                    stopSubtaskTimer(t.id, s.id);
+                  } else {
+                    startSubtaskTimer(t.id, s.id);
+                  }
+                }}
+                className={`text-2xs font-mono px-1.5 py-0.5 rounded border shrink-0 ${
+                  s.startedAt
+                    ? 'border-accent/40 text-accent animate-pulse hover:border-accent hover:bg-accent/10'
+                    : 'border-border text-mute hover:text-ink hover:border-mute'
+                }`}
+              >
+                {s.startedAt ? '⏹' : (s.estimatedMinutes ? `▶ ${s.estimatedMinutes >= 60 ? `${s.estimatedMinutes / 60}h` : `${s.estimatedMinutes}m`}` : '▶')}
+              </button>
             </div>
           ))}
         </div>

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useTaskStore } from '@/store/useTaskStore';
+import { getEffectiveEstimatedMinutes, getEffectiveActualMinutes } from '@/lib/time';
 import type { Task } from '@/types';
 
 type Period = 'week' | 'month';
@@ -36,21 +37,25 @@ export default function Insights() {
       (t) => t.status === 'done' && t.completedAt && new Date(t.completedAt) >= cutoff
     );
 
-    const tracked = completedAll.filter(
-      (t) => t.estimatedMinutes != null && t.actualMinutes != null
-    );
+    const tracked = completedAll.filter((t) => {
+      const est = getEffectiveEstimatedMinutes(t);
+      const act = getEffectiveActualMinutes(t);
+      return est != null && act != null;
+    });
 
     let accuracy = 0;
     let saved = 0;
     let over = 0;
 
     if (tracked.length > 0) {
-      const totalEst = tracked.reduce((s, t) => s + t.estimatedMinutes!, 0);
-      const totalAct = tracked.reduce((s, t) => s + t.actualMinutes!, 0);
+      const totalEst = tracked.reduce((s, t) => s + (getEffectiveEstimatedMinutes(t) ?? 0), 0);
+      const totalAct = tracked.reduce((s, t) => s + (getEffectiveActualMinutes(t) ?? 0), 0);
       accuracy = totalEst > 0 ? Math.round((totalAct / totalEst) * 100) : 0;
 
       for (const t of tracked) {
-        const diff = t.estimatedMinutes! - t.actualMinutes!;
+        const est = getEffectiveEstimatedMinutes(t) ?? 0;
+        const act = getEffectiveActualMinutes(t) ?? 0;
+        const diff = est - act;
         if (diff > 0) saved += diff;
         else over += Math.abs(diff);
       }

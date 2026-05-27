@@ -12,6 +12,7 @@ import type {
   ProjectPatch,
   Settings,
   Subtask,
+  SubtaskPatch,
   Tag,
   Task,
   TaskPatch,
@@ -41,8 +42,10 @@ interface State {
   addSubtask: (taskId: string, title: string) => Promise<void>;
   toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
-  updateSubtask: (taskId: string, subtaskId: string, title: string) => Promise<void>;
+  updateSubtask: (taskId: string, subtaskId: string, patch: SubtaskPatch) => Promise<void>;
   moveSubtask: (taskId: string, subtaskId: string, direction: 'up' | 'down') => Promise<void>;
+  startSubtaskTimer: (taskId: string, subtaskId: string) => Promise<void>;
+  stopSubtaskTimer: (taskId: string, subtaskId: string) => Promise<void>;
 
   // ─ projects ─
   addProject: (input: NewProject) => Promise<Project>;
@@ -242,20 +245,32 @@ export const useTaskStore = create<State>((set, get) => ({
     }));
   },
 
-  updateSubtask: async (taskId, subtaskId, title) => {
-    const updated = await api.updateSubtask(taskId, subtaskId, title);
-    set((st) => ({
-      tasks: st.tasks.map((t) =>
-        t.id !== taskId
-          ? t
-          : {
-              ...t,
-              subtasks: t.subtasks.map((s) =>
-                s.id === subtaskId ? updated : s,
-              ),
-            },
-      ),
-    }));
+  updateSubtask: async (taskId, subtaskId, patch) => {
+    const updated = await api.updateSubtask(taskId, subtaskId, patch);
+    set((st) => {
+      const updatedTasks = st.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        const updatedSubtasks = t.subtasks.map((s) =>
+          s.id === subtaskId ? updated : s,
+        );
+        // Auto-recalculate task times from subtasks
+        const hasSubtaskEstimates = updatedSubtasks.some(s => s.estimatedMinutes != null);
+        const hasSubtaskActuals = updatedSubtasks.some(s => s.actualMinutes != null);
+        const estimatedMinutes = hasSubtaskEstimates
+          ? updatedSubtasks.reduce((sum, s) => sum + (s.estimatedMinutes ?? 0), 0) || null
+          : t.estimatedMinutes;
+        const actualMinutes = hasSubtaskActuals
+          ? updatedSubtasks.reduce((sum, s) => sum + (s.actualMinutes ?? 0), 0) || null
+          : t.actualMinutes;
+        return {
+          ...t,
+          subtasks: updatedSubtasks,
+          estimatedMinutes,
+          actualMinutes,
+        };
+      });
+      return { tasks: updatedTasks };
+    });
   },
 
   moveSubtask: async (taskId, subtaskId, direction) => {
@@ -267,6 +282,53 @@ export const useTaskStore = create<State>((set, get) => ({
           : { ...t, subtasks },
       ),
     }));
+  },
+
+  startSubtaskTimer: async (taskId, subtaskId) => {
+    try {
+      const updated = await api.startSubtaskTimer(taskId, subtaskId);
+      set((st) => ({
+        tasks: st.tasks.map((t) =>
+          t.id !== taskId
+            ? t
+            : {
+                ...t,
+                subtasks: t.subtasks.map((s) =>
+                  s.id === subtaskId ? updated : s,
+                ),
+              },
+        ),
+      }));
+    } catch (e: any) {
+      console.error("startSubtaskTimer error:", e);
+    }
+  },
+
+  stopSubtaskTimer: async (taskId, subtaskId) => {
+    try {
+      const updated = await api.stopSubtaskTimer(taskId, subtaskId);
+      set((st) => {
+        const updatedTasks = st.tasks.map((t) => {
+          if (t.id !== taskId) return t;
+          const updatedSubtasks = t.subtasks.map((s) =>
+            s.id === subtaskId ? updated : s,
+          );
+          // Auto-recalculate task actual_minutes from subtasks
+          const hasSubtaskActuals = updatedSubtasks.some(s => s.actualMinutes != null);
+          const actualMinutes = hasSubtaskActuals
+            ? updatedSubtasks.reduce((sum, s) => sum + (s.actualMinutes ?? 0), 0) || null
+            : t.actualMinutes;
+          return {
+            ...t,
+            subtasks: updatedSubtasks,
+            actualMinutes,
+          };
+        });
+        return { tasks: updatedTasks };
+      });
+    } catch (e: any) {
+      console.error("stopSubtaskTimer error:", e);
+    }
   },
 
   // ── projects ──

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use parking_lot::Mutex;
+use chrono::{DateTime, Utc, Duration};
 use crate::error::Result;
 use crate::models::AppData;
 
@@ -12,7 +13,7 @@ impl AppState {
     pub fn load_or_init(app_data_dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&app_data_dir)?;
         let path = app_data_dir.join("qota.json");
-        let data = if path.exists() {
+        let mut data = if path.exists() {
             let bytes = std::fs::read(&path)?;
             let data: AppData = serde_json::from_slice(&bytes)?;
             // migrate(&mut data)?;
@@ -22,6 +23,20 @@ impl AppState {
             atomic_write(&path, &seed)?;
             seed
         };
+
+        // Purge completed tasks older than 2 months
+        let cutoff = Utc::now() - Duration::days(60);
+        let before_len = data.tasks.len();
+        data.tasks.retain(|t| match &t.completed_at {
+            Some(ts) => DateTime::parse_from_rfc3339(ts)
+                .map(|dt| dt.with_timezone(&Utc) >= cutoff)
+                .unwrap_or(true),
+            None => true,
+        });
+        if data.tasks.len() != before_len {
+            atomic_write(&path, &data)?;
+        }
+
         Ok(Self { data: Mutex::new(data), path })
     }
 

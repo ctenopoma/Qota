@@ -50,6 +50,12 @@ pub struct Subtask {
     pub id: String,
     pub title: String,
     pub done: bool,
+    #[serde(default)]
+    pub estimated_minutes: Option<u32>,
+    #[serde(default)]
+    pub actual_minutes: Option<u32>,
+    #[serde(default)]
+    pub started_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -231,6 +237,18 @@ pub struct SettingsPatch {
     pub density: Option<Density>,
     pub row_height: Option<u8>,
     pub week_start: Option<WeekStart>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtaskPatch {
+    pub title: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub estimated_minutes: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub actual_minutes: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub started_at: Option<Option<String>>,
 }
 
 

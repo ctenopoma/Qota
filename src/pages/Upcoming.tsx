@@ -30,6 +30,8 @@ function UpcomingTaskCard({ t, project, onOpen }: { t: Task; project: any; onOpe
   const updateTask = useTaskStore((s) => s.updateTask);
   const startTimer = useTaskStore((s) => s.startTimer);
   const stopTimer = useTaskStore((s) => s.stopTimer);
+  const startSubtaskTimer = useTaskStore((s) => s.startSubtaskTimer);
+  const stopSubtaskTimer = useTaskStore((s) => s.stopSubtaskTimer);
 
   return (
     <div className="flex flex-col bg-bg border border-border rounded hover:border-mute overflow-hidden group">
@@ -164,7 +166,42 @@ function UpcomingTaskCard({ t, project, onOpen }: { t: Task; project: any; onOpe
                 className={`w-3 h-3 rounded-sm border shrink-0 ${s.done ? 'bg-accent border-accent' : 'border-mute hover:border-ink'}`}
                 aria-label="toggle subtask"
               />
-              <span className={`truncate ${s.done ? 'line-through text-mute' : 'text-faint'}`}>{s.title}</span>
+              <span className={`flex-1 truncate ${s.done ? 'line-through text-mute' : 'text-faint'}`}>{s.title}</span>
+              {s.actualMinutes != null && s.actualMinutes > 0 && (
+                <span
+                  className={`text-2xs font-mono shrink-0 ${
+                    s.estimatedMinutes != null && s.actualMinutes <= s.estimatedMinutes
+                      ? 'text-accent'
+                      : s.estimatedMinutes != null
+                      ? 'text-high'
+                      : 'text-faint'
+                  }`}
+                  title="実績時間"
+                >
+                  実: {s.actualMinutes >= 60 ? `${Math.floor(s.actualMinutes / 60)}h${s.actualMinutes % 60 ? ` ${s.actualMinutes % 60}m` : ''}` : `${s.actualMinutes}m`}
+                </span>
+              )}
+              {t.status !== 'done' && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (s.startedAt) {
+                      stopSubtaskTimer(t.id, s.id);
+                    } else {
+                      startSubtaskTimer(t.id, s.id);
+                    }
+                  }}
+                  className={`text-2xs font-mono px-1 py-0.5 rounded border shrink-0 ${
+                    s.startedAt
+                      ? 'border-accent/40 text-accent animate-pulse hover:border-accent hover:bg-accent/10'
+                      : 'border-border text-mute hover:text-ink hover:border-mute'
+                  }`}
+                  title={s.startedAt ? '計測停止' : '計測開始'}
+                >
+                  {s.startedAt ? '⏹' : (s.estimatedMinutes ? `▶ ${s.estimatedMinutes >= 60 ? `${s.estimatedMinutes / 60}h` : `${s.estimatedMinutes}m`}` : '▶')}
+                </button>
+              )}
             </div>
           ))}
         </div>

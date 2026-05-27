@@ -7,7 +7,12 @@ export interface Subtask {
   id: string;
   title: string;
   done: boolean;
+  estimatedMinutes?: number | null;
+  actualMinutes?: number | null;
+  startedAt?: string | null;
 }
+
+export type SubtaskPatch = Partial<Pick<Subtask, 'title' | 'estimatedMinutes' | 'actualMinutes' | 'startedAt'>>;
 
 export interface Task {
   id: string;
