@@ -1,12 +1,165 @@
 import { useState, useEffect } from 'react';
 import { useTaskStore } from '@/store/useTaskStore';
 import { getEffectiveEstimatedMinutes } from '@/lib/time';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const SUBTASK_TIME_OPTIONS = [5, 10, 15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360];
 
 interface Props {
   id: string;
   onClose: () => void;
+}
+
+function SortableSubtaskItem({
+  s, t, editingSubtask, setEditingSubtask,
+  updateSubtask, toggleSubtask, deleteSubtask,
+  startSubtaskTimer, stopSubtaskTimer, subtaskElapsed
+}: any) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: s.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1 group bg-panel py-0.5 relative">
+      <button
+        {...attributes}
+        {...listeners}
+        className="text-faint hover:text-ink cursor-grab active:cursor-grabbing px-1 touch-none"
+        title="ドラッグして移動"
+      >
+        ≡
+      </button>
+      <button
+        onClick={() => toggleSubtask(t.id, s.id)}
+        className={`w-3 h-3 rounded-sm border shrink-0 ${
+          s.done ? 'bg-accent border-accent' : 'border-mute'
+        }`}
+      />
+      {editingSubtask?.id === s.id ? (
+        <input
+          value={editingSubtask.title}
+          onChange={(e) => setEditingSubtask({ ...editingSubtask, title: e.target.value })}
+          onBlur={() => {
+            if (editingSubtask.title.trim() && editingSubtask.title !== s.title) {
+              updateSubtask(t.id, s.id, { title: editingSubtask.title });
+            }
+            setEditingSubtask(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key === 'Escape') setEditingSubtask(null);
+          }}
+          autoFocus
+          className="flex-1 text-sm bg-transparent outline-none border-b border-border"
+        />
+      ) : (
+        <span
+          onClick={() => setEditingSubtask({ id: s.id, title: s.title })}
+          className={`flex-1 text-sm cursor-text ${s.done ? 'line-through text-mute' : ''}`}
+        >
+          {s.title}
+        </span>
+      )}
+      {/* Time selector */}
+      {s.estimatedMinutes == null ? (
+        <button
+          onClick={() => updateSubtask(t.id, s.id, { estimatedMinutes: 30 })}
+          className="text-2xs text-faint hover:text-ink shrink-0"
+          title="時間を追加"
+        >
+          ⊕
+        </button>
+      ) : (
+        <select
+          value={s.estimatedMinutes}
+          onChange={(e) =>
+            updateSubtask(t.id, s.id, { estimatedMinutes: Number(e.target.value) })
+          }
+          className="bg-transparent border border-border rounded px-1 text-2xs font-mono shrink-0"
+        >
+          {SUBTASK_TIME_OPTIONS.map((m) => (
+            <option className="bg-panel text-ink" key={m} value={m}>
+              {m >= 60 ? `${m / 60}h` : `${m}m`}
+            </option>
+          ))}
+        </select>
+      )}
+      {/* Actual time display */}
+      {s.actualMinutes != null && s.actualMinutes > 0 && (
+        <span
+          className={`text-2xs font-mono shrink-0 ${
+            s.estimatedMinutes != null && s.actualMinutes <= s.estimatedMinutes
+              ? 'text-accent'
+              : s.estimatedMinutes != null
+              ? 'text-high'
+              : 'text-faint'
+          }`}
+          title="実績時間"
+        >
+          実: {s.actualMinutes >= 60 ? `${Math.floor(s.actualMinutes / 60)}h${s.actualMinutes % 60 ? ` ${s.actualMinutes % 60}m` : ''}` : `${s.actualMinutes}m`}
+        </span>
+      )}
+      {/* Timer */}
+      {s.estimatedMinutes != null && t.status !== 'done' && (
+        <>
+          {s.startedAt ? (
+            <>
+              <span className="text-2xs font-mono text-accent animate-pulse shrink-0">
+                ● {subtaskElapsed[s.id] || '0m'}
+              </span>
+              <button
+                onClick={() => stopSubtaskTimer(t.id, s.id)}
+                className="text-2xs font-mono text-faint hover:text-ink border border-border rounded px-1.5 py-0.5 shrink-0"
+              >
+                ⏹
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => startSubtaskTimer(t.id, s.id)}
+              className="text-2xs font-mono text-faint hover:text-ink border border-border rounded px-1.5 py-0.5 shrink-0"
+            >
+              ▶
+            </button>
+          )}
+        </>
+      )}
+      <button
+        onClick={() => deleteSubtask(t.id, s.id)}
+        className="text-2xs text-faint opacity-0 group-hover:opacity-100 shrink-0"
+      >
+        ×
+      </button>
+    </div>
+  );
 }
 
 export default function TaskDetail({ id, onClose }: Props) {
@@ -20,9 +173,9 @@ export default function TaskDetail({ id, onClose }: Props) {
   const toggleSubtask = useTaskStore((s) => s.toggleSubtask);
   const deleteSubtask = useTaskStore((s) => s.deleteSubtask);
   const updateSubtask = useTaskStore((s) => s.updateSubtask);
-  const moveSubtask = useTaskStore((s) => s.moveSubtask);
   const startTimer = useTaskStore((s) => s.startTimer);
   const stopTimer = useTaskStore((s) => s.stopTimer);
+  const reorderSubtasks = useTaskStore((s) => s.reorderSubtasks);
 
   const [subInput, setSubInput] = useState('');
   const [titleInput, setTitleInput] = useState(task?.title ?? '');
@@ -32,6 +185,28 @@ export default function TaskDetail({ id, onClose }: Props) {
   const [subtaskElapsed, setSubtaskElapsed] = useState<{ [id: string]: string }>({});
   const startSubtaskTimer = useTaskStore((s) => s.startSubtaskTimer);
   const stopSubtaskTimer = useTaskStore((s) => s.stopSubtaskTimer);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id && task) {
+      const oldIndex = task.subtasks.findIndex(s => s.id === active.id);
+      const newIndex = task.subtasks.findIndex(s => s.id === over.id);
+      const newSubtasks = arrayMove(task.subtasks, oldIndex, newIndex);
+      const newSubtaskIds = newSubtasks.map(s => s.id);
+      reorderSubtasks(task.id, newSubtaskIds);
+    }
+  };
 
   useEffect(() => {
     if (task) {
@@ -345,129 +520,32 @@ export default function TaskDetail({ id, onClose }: Props) {
           <div>
             <div className="text-2xs font-mono uppercase tracking-widest text-faint mb-1">サブタスク</div>
             <div className="flex flex-col gap-0.5 mb-2">
-              {t.subtasks.map((s, i) => (
-                <div key={s.id} className="flex items-center gap-1 group">
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      onClick={() => moveSubtask(t.id, s.id, 'up')}
-                      disabled={i === 0}
-                      className="text-2xs text-faint disabled:opacity-30 hover:opacity-100"
-                      title="上に移動"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      onClick={() => moveSubtask(t.id, s.id, 'down')}
-                      disabled={i === t.subtasks.length - 1}
-                      className="text-2xs text-faint disabled:opacity-30 hover:opacity-100"
-                      title="下に移動"
-                    >
-                      ▼
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => toggleSubtask(t.id, s.id)}
-                    className={`w-3 h-3 rounded-sm border shrink-0 ${
-                      s.done ? 'bg-accent border-accent' : 'border-mute'
-                    }`}
-                  />
-                  {editingSubtask?.id === s.id ? (
-                    <input
-                      value={editingSubtask.title}
-                      onChange={(e) => setEditingSubtask({ ...editingSubtask, title: e.target.value })}
-                      onBlur={() => {
-                        if (editingSubtask.title.trim() && editingSubtask.title !== s.title) {
-                          updateSubtask(t.id, s.id, { title: editingSubtask.title });
-                        }
-                        setEditingSubtask(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur();
-                        if (e.key === 'Escape') setEditingSubtask(null);
-                      }}
-                      autoFocus
-                      className="flex-1 text-sm bg-transparent outline-none border-b border-border"
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={t.subtasks.map(s => s.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {t.subtasks.map((s) => (
+                    <SortableSubtaskItem
+                      key={s.id}
+                      s={s}
+                      t={t}
+                      editingSubtask={editingSubtask}
+                      setEditingSubtask={setEditingSubtask}
+                      updateSubtask={updateSubtask}
+                      toggleSubtask={toggleSubtask}
+                      deleteSubtask={deleteSubtask}
+                      startSubtaskTimer={startSubtaskTimer}
+                      stopSubtaskTimer={stopSubtaskTimer}
+                      subtaskElapsed={subtaskElapsed}
                     />
-                  ) : (
-                    <span
-                      onClick={() => setEditingSubtask({ id: s.id, title: s.title })}
-                      className={`flex-1 text-sm cursor-text ${s.done ? 'line-through text-mute' : ''}`}
-                    >
-                      {s.title}
-                    </span>
-                  )}
-                  {/* Time selector */}
-                  {s.estimatedMinutes == null ? (
-                    <button
-                      onClick={() => updateSubtask(t.id, s.id, { estimatedMinutes: 30 })}
-                      className="text-2xs text-faint hover:text-ink shrink-0"
-                      title="時間を追加"
-                    >
-                      ⊕
-                    </button>
-                  ) : (
-                    <select
-                      value={s.estimatedMinutes}
-                      onChange={(e) =>
-                        updateSubtask(t.id, s.id, { estimatedMinutes: Number(e.target.value) })
-                      }
-                      className="bg-transparent border border-border rounded px-1 text-2xs font-mono shrink-0"
-                    >
-                      {SUBTASK_TIME_OPTIONS.map((m) => (
-                        <option className="bg-panel text-ink" key={m} value={m}>
-                          {m >= 60 ? `${m / 60}h` : `${m}m`}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {/* Actual time display */}
-                  {s.actualMinutes != null && s.actualMinutes > 0 && (
-                    <span
-                      className={`text-2xs font-mono shrink-0 ${
-                        s.estimatedMinutes != null && s.actualMinutes <= s.estimatedMinutes
-                          ? 'text-accent'
-                          : s.estimatedMinutes != null
-                          ? 'text-high'
-                          : 'text-faint'
-                      }`}
-                      title="実績時間"
-                    >
-                      実: {s.actualMinutes >= 60 ? `${Math.floor(s.actualMinutes / 60)}h${s.actualMinutes % 60 ? ` ${s.actualMinutes % 60}m` : ''}` : `${s.actualMinutes}m`}
-                    </span>
-                  )}
-                  {/* Timer */}
-                  {s.estimatedMinutes != null && t.status !== 'done' && (
-                    <>
-                      {s.startedAt ? (
-                        <>
-                          <span className="text-2xs font-mono text-accent animate-pulse shrink-0">
-                            ● {subtaskElapsed[s.id] || '0m'}
-                          </span>
-                          <button
-                            onClick={() => stopSubtaskTimer(t.id, s.id)}
-                            className="text-2xs font-mono text-faint hover:text-ink border border-border rounded px-1.5 py-0.5 shrink-0"
-                          >
-                            ⏹
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => startSubtaskTimer(t.id, s.id)}
-                          className="text-2xs font-mono text-faint hover:text-ink border border-border rounded px-1.5 py-0.5 shrink-0"
-                        >
-                          ▶
-                        </button>
-                      )}
-                    </>
-                  )}
-                  <button
-                    onClick={() => deleteSubtask(t.id, s.id)}
-                    className="text-2xs text-faint opacity-0 group-hover:opacity-100 shrink-0"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+                  ))}
+                </SortableContext>
+              </DndContext>
             </div>
             <form
               onSubmit={(e) => {

@@ -39,6 +39,8 @@ export const api = {
     invoke<Subtask>('update_subtask', { taskId, subtaskId, patch }),
   moveSubtask: (taskId: string, subtaskId: string, direction: 'up' | 'down') =>
     invoke<Subtask[]>('move_subtask', { taskId, subtaskId, direction }),
+  reorderSubtasks: (taskId: string, subtaskIds: string[]) =>
+    invoke<Subtask[]>('reorder_subtasks', { taskId, subtaskIds }),
   startSubtaskTimer: (taskId: string, subtaskId: string) =>
     invoke<Subtask>('start_subtask_timer', { taskId, subtaskId }),
   stopSubtaskTimer: (taskId: string, subtaskId: string) =>

@@ -44,6 +44,7 @@ interface State {
   deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   updateSubtask: (taskId: string, subtaskId: string, patch: SubtaskPatch) => Promise<void>;
   moveSubtask: (taskId: string, subtaskId: string, direction: 'up' | 'down') => Promise<void>;
+  reorderSubtasks: (taskId: string, subtaskIds: string[]) => Promise<void>;
   startSubtaskTimer: (taskId: string, subtaskId: string) => Promise<void>;
   stopSubtaskTimer: (taskId: string, subtaskId: string) => Promise<void>;
 
@@ -282,6 +283,40 @@ export const useTaskStore = create<State>((set, get) => ({
           : { ...t, subtasks },
       ),
     }));
+  },
+
+  reorderSubtasks: async (taskId, subtaskIds) => {
+    // Optimistic update first
+    set((st) => {
+      const updatedTasks = st.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+        const newSubtasks = [...t.subtasks];
+        newSubtasks.sort((a, b) => {
+          const idxA = subtaskIds.indexOf(a.id);
+          const idxB = subtaskIds.indexOf(b.id);
+          // Items not in the list go to the end
+          const posA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
+          const posB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
+          return posA - posB;
+        });
+        return { ...t, subtasks: newSubtasks };
+      });
+      return { tasks: updatedTasks };
+    });
+
+    try {
+      const subtasks = await api.reorderSubtasks(taskId, subtaskIds);
+      set((st) => ({
+        tasks: st.tasks.map((t) =>
+          t.id !== taskId
+            ? t
+            : { ...t, subtasks },
+        ),
+      }));
+    } catch (e: any) {
+      console.error("reorderSubtasks error:", e);
+      // Let it stay or rollback in a more complex setup
+    }
   },
 
   startSubtaskTimer: async (taskId, subtaskId) => {

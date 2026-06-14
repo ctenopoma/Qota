@@ -159,6 +159,35 @@ pub fn move_subtask(
 }
 
 #[tauri::command]
+pub fn reorder_subtasks(
+    state: State<'_, AppState>,
+    task_id: String,
+    subtask_ids: Vec<String>,
+) -> Result<Vec<Subtask>> {
+    let subtasks = {
+        let mut data = state.data.lock();
+        let t = data.tasks.iter_mut()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| Error::NotFound(format!("task {task_id}")))?;
+
+        let mut new_subtasks = Vec::with_capacity(t.subtasks.len());
+        for id in &subtask_ids {
+            if let Some(pos) = t.subtasks.iter().position(|s| s.id == *id) {
+                new_subtasks.push(t.subtasks.remove(pos));
+            }
+        }
+        // If there are any remaining subtasks not in the list, append them
+        new_subtasks.extend(t.subtasks.drain(..));
+
+        t.subtasks = new_subtasks;
+        t.updated_at = Utc::now().to_rfc3339();
+        t.subtasks.clone()
+    };
+    state.save()?;
+    Ok(subtasks)
+}
+
+#[tauri::command]
 pub fn start_subtask_timer(state: State<'_, AppState>, task_id: String, subtask_id: String) -> Result<Subtask> {
     let updated = {
         let mut data = state.data.lock();
