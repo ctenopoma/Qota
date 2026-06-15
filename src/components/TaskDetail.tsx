@@ -256,10 +256,10 @@ export default function TaskDetail({ id, onClose }: Props) {
   const t = task;
 
   return (
-    <div className="fixed inset-0 bg-black/40 grid place-items-end z-40" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/40 flex items-stretch justify-end z-40" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="h-full w-[480px] bg-panel border-l border-border flex flex-col"
+        className="w-[480px] bg-panel border-l border-border flex flex-col overflow-hidden"
       >
         <header className="px-4 py-3 border-b border-border flex items-center gap-2">
           <span className="text-2xs font-mono uppercase tracking-widest text-faint">タスク詳細</span>
@@ -268,7 +268,7 @@ export default function TaskDetail({ id, onClose }: Props) {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-4">
           <input
             value={titleInput}
             onChange={(e) => setTitleInput(e.target.value)}

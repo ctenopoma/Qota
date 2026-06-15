@@ -46,7 +46,7 @@ export default function TaskTable({ title, subtitle, tasks, project, onOpen }: P
         />
       </form>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {activeTasks.length === 0 && doneTasks.length === 0 ? (
           <div className="p-12 text-center text-2xs text-faint font-mono">
             タスクなし

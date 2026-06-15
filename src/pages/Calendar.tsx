@@ -78,7 +78,7 @@ export default function Calendar({ onOpen }: Props) {
             </div>
           ))}
         </div>
-        <div className="flex-1 grid grid-cols-7 auto-rows-[minmax(80px,1fr)] gap-px bg-border border border-border overflow-y-auto">
+        <div className="flex-1 min-h-0 grid grid-cols-7 auto-rows-[minmax(80px,1fr)] gap-px bg-border border border-border overflow-y-auto">
           {blanks.map((_, i) => (
             <div key={`blank-${i}`} className="bg-bg p-1" />
           ))}

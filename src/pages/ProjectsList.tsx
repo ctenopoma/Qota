@@ -66,7 +66,7 @@ export default function ProjectsList({ onOpen }: { onOpen: (id: string) => void 
           className="w-full bg-transparent outline-none text-sm placeholder:text-faint"
         />
       </form>
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-6 flex gap-6 items-start">
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden p-6 flex gap-6">
         {projects.map((p) => {
           const projectTasks = tasks.filter((t) => t.projectId === p.id);
           const done = projectTasks.filter((t) => t.status === 'done').length;
@@ -155,7 +155,7 @@ export default function ProjectsList({ onOpen }: { onOpen: (id: string) => void 
                   </div>
                 </>
               )}
-              <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1" style={{ scrollbarWidth: 'thin' }}>
+              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-1" style={{ scrollbarWidth: 'thin' }}>
                 {projectTasks.length === 0 ? (
                   <div className="text-2xs text-faint font-mono text-center py-4">タスクなし</div>
                 ) : (

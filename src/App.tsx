@@ -90,7 +90,7 @@ export default function App() {
         isOpen={sidebarOpen}
       />
 
-      <main className="overflow-hidden">
+      <main className="h-full overflow-hidden">
         {route.view === 'today' && <Today onOpen={setDetailId} />}
         {route.view === 'inbox' && <Inbox onOpen={setDetailId} />}
         {route.view === 'upcoming' && <Upcoming onOpen={setDetailId} />}

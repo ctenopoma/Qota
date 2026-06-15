@@ -40,135 +40,138 @@ export default function Sidebar({ route, onRoute, onCmd, onSearch, onNotif, onTo
     }`;
 
   return (
-    <aside className={`border-r border-border bg-panel flex flex-col p-3 gap-3 text-sm overflow-y-auto transition-all ${!isOpen ? 'items-center' : ''}`}>
-      {isOpen && (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-2xs text-faint tracking-widest">QOTA</span>
-            <div className="flex gap-1">
-              <button
-                onClick={onSearch}
-                className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border"
-                title="検索 (⌘/)"
-              >
-                /
-              </button>
-              <button
-                onClick={onNotif}
-                className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border relative"
-                title="通知"
-              >
-                !
-                {overdueCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-high text-bg text-2xs leading-none rounded-full w-3 h-3 grid place-items-center">
-                    {overdueCount}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <button
-            onClick={onCmd}
-            className="flex items-center justify-between border border-border rounded px-2 py-1.5 text-2xs text-mute hover:text-ink"
-          >
-            <span>コマンド…</span>
-            <kbd className="font-mono text-2xs">⌘K</kbd>
-          </button>
-
-          <nav className="flex flex-col gap-0.5">
-            <button onClick={() => onRoute({ view: 'today' })} className={navBtn(isActive((r) => r.view === 'today'))}>
-              今日
-            </button>
-            <button onClick={() => onRoute({ view: 'inbox' })} className={navBtn(isActive((r) => r.view === 'inbox'))}>
-              受信箱
-            </button>
-            <button onClick={() => onRoute({ view: 'upcoming' })} className={navBtn(isActive((r) => r.view === 'upcoming'))}>
-              今後
-            </button>
-            <button onClick={() => onRoute({ view: 'calendar' })} className={navBtn(isActive((r) => r.view === 'calendar'))}>
-              カレンダー
-            </button>
-            <button onClick={() => onRoute({ view: 'insights' })} className={navBtn(isActive((r) => r.view === 'insights'))}>
-              インサイト
-            </button>
-          </nav>
-
-          <div className="mt-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-mono text-2xs text-faint tracking-widest">PROJECTS</span>
-              <div className="flex gap-2">
+    <aside className={`border-r border-border bg-panel flex flex-col text-sm transition-all overflow-hidden ${!isOpen ? 'items-center' : ''}`}>
+      {/* スクロール可能なメインコンテンツ */}
+      <div className={`flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 p-3 ${!isOpen ? 'items-center w-full' : ''}`}>
+        {isOpen && (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-2xs text-faint tracking-widest">QOTA</span>
+              <div className="flex gap-1">
                 <button
-                  onClick={() => setIsAddingProject(true)}
-                  className="text-2xs text-mute hover:text-ink"
-                  title="プロジェクトを追加"
+                  onClick={onSearch}
+                  className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border"
+                  title="検索 (⌘/)"
                 >
-                  ＋
+                  /
                 </button>
                 <button
-                  onClick={() => onRoute({ view: 'projects' })}
-                  className="text-2xs text-mute hover:text-ink"
+                  onClick={onNotif}
+                  className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border relative"
+                  title="通知"
                 >
-                  一覧
+                  !
+                  {overdueCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-high text-bg text-2xs leading-none rounded-full w-3 h-3 grid place-items-center">
+                      {overdueCount}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
-            {isAddingProject && (
-              <form onSubmit={submitProject} className="mb-2">
-                <input
-                  autoFocus
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  onBlur={() => {
-                    if (!newProjectName.trim()) setIsAddingProject(false);
-                  }}
-                  placeholder="プロジェクト名..."
-                  className="w-full bg-bg border border-border rounded px-2 py-1 text-2xs outline-none focus:border-high placeholder:text-faint"
-                />
-              </form>
-            )}
-            <div className="flex flex-col gap-0.5">
-              {projects.filter((p) => !p.archived).map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => onRoute({ view: 'project', id: p.id })}
-                  className={navBtn(isActive((r) => r.view === 'project' && r.id === p.id))}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
-                  <span className="truncate">{p.name}</span>
-                </button>
-              ))}
+
+            <button
+              onClick={onCmd}
+              className="flex items-center justify-between border border-border rounded px-2 py-1.5 text-2xs text-mute hover:text-ink"
+            >
+              <span>コマンド…</span>
+              <kbd className="font-mono text-2xs">⌘K</kbd>
+            </button>
+
+            <nav className="flex flex-col gap-0.5">
+              <button onClick={() => onRoute({ view: 'today' })} className={navBtn(isActive((r) => r.view === 'today'))}>
+                今日
+              </button>
+              <button onClick={() => onRoute({ view: 'inbox' })} className={navBtn(isActive((r) => r.view === 'inbox'))}>
+                受信箱
+              </button>
+              <button onClick={() => onRoute({ view: 'upcoming' })} className={navBtn(isActive((r) => r.view === 'upcoming'))}>
+                今後
+              </button>
+              <button onClick={() => onRoute({ view: 'calendar' })} className={navBtn(isActive((r) => r.view === 'calendar'))}>
+                カレンダー
+              </button>
+              <button onClick={() => onRoute({ view: 'insights' })} className={navBtn(isActive((r) => r.view === 'insights'))}>
+                インサイト
+              </button>
+            </nav>
+
+            <div className="mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-mono text-2xs text-faint tracking-widest">PROJECTS</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsAddingProject(true)}
+                    className="text-2xs text-mute hover:text-ink"
+                    title="プロジェクトを追加"
+                  >
+                    ＋
+                  </button>
+                  <button
+                    onClick={() => onRoute({ view: 'projects' })}
+                    className="text-2xs text-mute hover:text-ink"
+                  >
+                    一覧
+                  </button>
+                </div>
+              </div>
+              {isAddingProject && (
+                <form onSubmit={submitProject} className="mb-2">
+                  <input
+                    autoFocus
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    onBlur={() => {
+                      if (!newProjectName.trim()) setIsAddingProject(false);
+                    }}
+                    placeholder="プロジェクト名..."
+                    className="w-full bg-bg border border-border rounded px-2 py-1 text-2xs outline-none focus:border-high placeholder:text-faint"
+                  />
+                </form>
+              )}
+              <div className="flex flex-col gap-0.5">
+                {projects.filter((p) => !p.archived).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => onRoute({ view: 'project', id: p.id })}
+                    className={navBtn(isActive((r) => r.view === 'project' && r.id === p.id))}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
+                    <span className="truncate">{p.name}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          </>
+        )}
 
-        </>
-      )}
+        {!isOpen && (
+          <nav className="flex flex-col gap-1">
+            <button
+              onClick={onSearch}
+              className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border"
+              title="検索 (⌘/)"
+            >
+              /
+            </button>
+            <button
+              onClick={onNotif}
+              className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border relative"
+              title="通知"
+            >
+              !
+              {overdueCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-high text-bg text-2xs leading-none rounded-full w-3 h-3 grid place-items-center">
+                  {overdueCount}
+                </span>
+              )}
+            </button>
+          </nav>
+        )}
+      </div>
 
-      {!isOpen && (
-        <nav className={`flex ${!isOpen ? 'flex-col' : 'gap-0.5'} gap-1`}>
-          <button
-            onClick={onSearch}
-            className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border"
-            title="検索 (⌘/)"
-          >
-            /
-          </button>
-          <button
-            onClick={onNotif}
-            className="px-1.5 py-0.5 rounded text-2xs text-mute hover:text-ink border border-border relative"
-            title="通知"
-          >
-            !
-            {overdueCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-high text-bg text-2xs leading-none rounded-full w-3 h-3 grid place-items-center">
-                {overdueCount}
-              </span>
-            )}
-          </button>
-        </nav>
-      )}
-
-      <div className={`mt-auto flex flex-col gap-3 w-full ${!isOpen ? 'items-center' : 'items-start'}`}>
+      {/* 常に表示されるボトムセクション */}
+      <div className={`flex-shrink-0 flex flex-col gap-3 p-3 border-t border-border w-full ${!isOpen ? 'items-center' : 'items-start'}`}>
         {isOpen && (
           <nav className="flex flex-col gap-0.5 w-full">
             <button onClick={() => onRoute({ view: 'tags' })} className={navBtn(isActive((r) => r.view === 'tags'))}>
