@@ -335,13 +335,15 @@ fn column(
 
 // ───── プロジェクト一覧・タグ ─────
 
-/// プロジェクトごとの列。タスクはデータの順（元アプリと同じ）、見出しの右は「完了/全体」
+/// プロジェクトごとの列。完了済みは出さず、タスクはデータの順。見出しの右は完了済みも含めた「完了/全体」
 pub fn project_columns(data: &AppData, expanded: &HashSet<String>) -> Vec<crate::Column> {
     data.projects.iter()
         .map(|p| {
-            let items: Vec<&Task> = data.tasks.iter().filter(|t| t.project_id.as_deref() == Some(p.id.as_str())).collect();
-            let done = items.iter().filter(|t| t.status == TaskStatus::Done).count();
-            column(&p.id, &p.name, format!("{done}/{}", items.len()), Some(&p.color), &items, data, expanded)
+            let (done, open): (Vec<&Task>, Vec<&Task>) = data.tasks.iter()
+                .filter(|t| t.project_id.as_deref() == Some(p.id.as_str()))
+                .partition(|t| t.status == TaskStatus::Done);
+            let sub = format!("{}/{}", done.len(), done.len() + open.len());
+            column(&p.id, &p.name, sub, Some(&p.color), &open, data, expanded)
         })
         .collect()
 }
@@ -477,6 +479,23 @@ mod tests {
         assert_eq!(b(Some("2026-11-03"), false), Some(5)); // 来月
         assert_eq!(b(Some("2027-01-10"), false), Some(6)); // それ以降
         assert_eq!(b(None, false), Some(7)); // 記載なし
+    }
+
+    #[test]
+    fn project_columns_hide_done_tasks_but_count_them() {
+        let mut data = crate::seed::sample_data();
+        let pid = data.projects[0].id.clone();
+        let mut open = task_due(None, false);
+        open.id = "open".into();
+        open.project_id = Some(pid.clone());
+        let mut done = task_due(None, true);
+        done.id = "done".into();
+        done.project_id = Some(pid);
+        data.tasks = vec![done, open];
+        let cols = project_columns(&data, &HashSet::new());
+        assert_eq!(cols[0].sub, "1/2");
+        let ids: Vec<String> = cols[0].tasks.iter().map(|t| t.id.to_string()).collect();
+        assert_eq!(ids, ["open"]);
     }
 
     #[test]

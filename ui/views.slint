@@ -656,7 +656,7 @@ export component ProjectsView inherits Rectangle {
                 ColumnBody {
                     gap: 8px;
                     if col.tasks.length == 0: EmptyNote {
-                        note: "タスクなし";
+                        note: "未完了のタスクなし";
                     }
                     for t in col.tasks: PlainCard {
                         task: t;
