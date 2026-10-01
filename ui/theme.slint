@@ -52,6 +52,14 @@ export global Bridge {
     callback nav-back();
     callback nav-forward();
 
+    // タスクのコピー・貼り付け (Ctrl+C / Ctrl+V)。コピーの対象はマウスが乗っているタスク、
+    // なければ開いている詳細のタスク。タスクを出す部品がマウスの出入りで hover-task を書き換える
+    in-out property <string> hover-task;
+    callback copy-task();
+    callback paste-task();
+    // クリップボードの中身が、このアプリでコピーしたタスクのままか
+    callback clipboard-has-task() -> bool;
+
     // year 年 month 月を含む週を並べたマス（7 の倍数個）
     pure callback month-days(year: int, month: int, monday-first: bool) -> [CalendarDay];
 }

@@ -134,6 +134,8 @@ export component Input inherits Rectangle {
     out property <bool> has-focus: ti.has-focus;
     // IME の変換中の文字列（確定前）。変換中はショートカットを横取りしないために使う
     out property <string> preedit-text: ti.preedit-text;
+    // 空のときの Ctrl+V で、コピーしたタスクを貼り付ける（新規タスクの入力欄だけ）
+    in property <bool> task-paste;
     callback accepted(text: string);
     callback edited(text: string);
     callback focus-out(text: string);
@@ -167,6 +169,17 @@ export component Input inherits Rectangle {
                         }
                         if event.text == "z" || event.text == "Z" {
                             Bridge.undo();
+                            return accept;
+                        }
+                    }
+                    // 文字を選んでいないときの Ctrl+C はタスクのコピーに回す（選んでいれば文字のコピー）
+                    if event.modifiers.control && !event.modifiers.shift && !event.modifiers.alt && ti.preedit-text == "" {
+                        if (event.text == "c" || event.text == "C") && ti.anchor-position-byte-offset == ti.cursor-position-byte-offset {
+                            Bridge.copy-task();
+                            return accept;
+                        }
+                        if (event.text == "v" || event.text == "V") && root.task-paste && ti.text == "" && Bridge.clipboard-has-task() {
+                            Bridge.paste-task();
                             return accept;
                         }
                     }

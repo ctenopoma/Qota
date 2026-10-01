@@ -213,6 +213,23 @@ export component AppWindow inherits Window {
             }
         }
 
+        // タスクのコピー・貼り付け。入力欄にフォーカスがあるときは入力欄が先に受け取る（文字のコピー・貼り付け）
+        KeyBinding {
+            keys: @keys(Control + C);
+            enabled: !root.confirm-open;
+            activated => {
+                Bridge.copy-task();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + V);
+            enabled: !root.confirm-open;
+            activated => {
+                Bridge.paste-task();
+            }
+        }
+
         // ブラウザと同じ Alt+← / Alt+→ でも戻る・進む（マウスの戻る・進むボタンは Rust 側で拾う）
         KeyBinding {
             keys: @keys(Alt + LeftArrow);

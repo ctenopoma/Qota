@@ -246,6 +246,41 @@ pub fn duplicate_task(state: &AppState, id: &str) -> Result<Task> {
     Ok(nt)
 }
 
+/// コピーしておいたタスクを新しいタスクとして加える。タイトル・メモ・優先度・期日・プロジェクト・タグ・
+/// サブタスクを引き継ぎ、完了・繰り返しは引き継がない（サブタスクは未完了に戻す）。
+/// コピーした後に消えたプロジェクト・タグは外す
+pub fn paste_task(state: &AppState, src: &Task) -> Result<Task> {
+    let now = Utc::now().to_rfc3339();
+    let task = {
+        let mut data = state.data.lock();
+        let project_id = src.project_id.clone().filter(|p| data.projects.iter().any(|x| &x.id == p));
+        let tag_ids = src.tag_ids.iter().filter(|t| data.tags.iter().any(|x| &x.id == *t)).cloned().collect();
+        let task = Task {
+            id: Uuid::new_v4().to_string(),
+            title: src.title.clone(),
+            notes: src.notes.clone(),
+            status: TaskStatus::Todo,
+            priority: src.priority.clone(),
+            due: src.due.clone(),
+            project_id,
+            tag_ids,
+            subtasks: src.subtasks.iter()
+                .map(|s| Subtask { id: Uuid::new_v4().to_string(), title: s.title.clone(), done: false })
+                .collect(),
+            created_at: now.clone(),
+            updated_at: now,
+            completed_at: None,
+            interval: None,
+            recurrence_id: None,
+            recurrence_end: None,
+        };
+        data.tasks.push(task.clone());
+        task
+    };
+    state.save()?;
+    Ok(task)
+}
+
 pub fn delete_task(state: &AppState, id: &str) -> Result<()> {
     {
         let mut data = state.data.lock();
@@ -267,6 +302,29 @@ mod tests {
         let dir = tempdir().unwrap();
         let s = AppState::load_or_init(dir.path().to_path_buf()).unwrap();
         (dir, s)
+    }
+
+    #[test]
+    fn paste_copies_content_but_not_completion_or_recurrence() {
+        let (_d, s) = state();
+        let mut src = s.data.lock().tasks[0].clone();
+        src.status = TaskStatus::Done;
+        src.completed_at = Some("2026-10-01T00:00:00Z".into());
+        src.interval = Some(Interval::Weekly);
+        src.recurrence_id = Some("r".into());
+        src.subtasks = vec![Subtask { id: "s".into(), title: "sub".into(), done: true }];
+        src.project_id = Some("gone".into());
+        let before = s.data.lock().tasks.len();
+        let t = paste_task(&s, &src).unwrap();
+        assert_eq!(s.data.lock().tasks.len(), before + 1);
+        assert_ne!(t.id, src.id);
+        assert_eq!((t.title.as_str(), t.due.as_deref()), (src.title.as_str(), src.due.as_deref()));
+        assert_eq!(t.status, TaskStatus::Todo);
+        assert!(t.completed_at.is_none() && t.interval.is_none() && t.recurrence_id.is_none());
+        assert_eq!(t.subtasks.len(), 1);
+        assert!(!t.subtasks[0].done && t.subtasks[0].id != "s");
+        // 消えたプロジェクトは外す
+        assert!(t.project_id.is_none());
     }
 
     #[test]

@@ -62,6 +62,16 @@ struct App {
     // 起動したまま日付が変わったら描き直すための、今の日付と 1 分ごとのタイマー
     today: Cell<NaiveDate>,
     day_timer: Timer,
+    // Ctrl+C でコピーしたタスク
+    clip: RefCell<Option<Clip>>,
+}
+
+/// コピーしたタスクと、そのとき OS のクリップボードに置いた文字（タイトル）。
+/// 貼り付けるのは、クリップボードがその文字のままのときだけ（ほかで文字をコピーしたら貼らない）
+struct Clip {
+    task: Task,
+    // クリップボードに書けなかったときは None。アプリ内のコピーだけで判断する
+    text: Option<String>,
 }
 
 enum Pending {
@@ -314,6 +324,7 @@ impl App {
         let ui = self.ui();
         ui.set_view(view);
         ui.set_project_id(pid);
+        ui.global::<Bridge>().set_hover_task(SharedString::new());
         self.refresh();
     }
 
@@ -404,6 +415,58 @@ impl App {
             if t.status == TaskStatus::Done {
                 self.toast(format!("{}を完了にしました", quoted(&t.title)), true, false);
             }
+        }
+    }
+
+    /// マウスが乗っているタスク、なければ開いている詳細のタスクをコピーする
+    fn copy_task(&self) {
+        let ui = self.ui();
+        let hover = ui.global::<Bridge>().get_hover_task().to_string();
+        let detail = if ui.get_detail_open() { self.detail_id.borrow().clone() } else { None };
+        let found = {
+            let data = self.state.data.lock();
+            [Some(hover), detail].into_iter().flatten()
+                .find_map(|id| data.tasks.iter().find(|t| t.id == id).cloned())
+        };
+        let Some(task) = found else { return };
+        let text = match arboard::Clipboard::new().and_then(|mut c| c.set_text(task.title.clone())) {
+            Ok(()) => Some(task.title.clone()),
+            Err(e) => {
+                eprintln!("clipboard: {e}");
+                None
+            }
+        };
+        self.toast(format!("{}をコピーしました", quoted(&task.title)), false, false);
+        *self.clip.borrow_mut() = Some(Clip { task, text });
+    }
+
+    fn clipboard_has_task(&self) -> bool {
+        match self.clip.borrow().as_ref() {
+            None => false,
+            Some(Clip { text: None, .. }) => true,
+            Some(Clip { text: Some(text), .. }) => {
+                arboard::Clipboard::new().and_then(|mut c| c.get_text()).is_ok_and(|t| &t == text)
+            }
+        }
+    }
+
+    /// コピーしたタスクを今の画面に貼り付ける。今日なら期日を今日に、受信箱ならプロジェクトなしに、
+    /// プロジェクトの画面ならそのプロジェクトにする。ほかの画面ではコピー元と同じ
+    fn paste_task(&self) {
+        if !self.clipboard_has_task() {
+            return;
+        }
+        let Some(mut task) = self.clip.borrow().as_ref().map(|c| c.task.clone()) else { return };
+        let (view, pid) = self.route();
+        match view.as_str() {
+            "today" => task.due = Some(self.today.get().format("%Y-%m-%d").to_string()),
+            "inbox" => task.project_id = None,
+            "project" => task.project_id = Some(pid.to_string()),
+            _ => {}
+        }
+        let name = quoted(&task.title);
+        if self.mutate(|_| format!("{name}の貼り付け"), |s| tasks::paste_task(s, &task)).is_some() {
+            self.toast(format!("{name}を貼り付けました"), true, false);
         }
     }
 
@@ -637,6 +700,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         drafts: RefCell::default(),
         today: Cell::new(view::today()),
         day_timer: Timer::default(),
+        clip: RefCell::new(None),
     });
 
     // サイドバーと「完了済み」の開閉を戻す。開発用フックで起動したときはクリック位置の前提が崩れるので戻さない
@@ -685,6 +749,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bridge.on_nav_back(move || if let Some(a) = w.upgrade() { a.nav_back() });
         let w = Rc::downgrade(&app);
         bridge.on_nav_forward(move || if let Some(a) = w.upgrade() { a.nav_forward() });
+        let w = Rc::downgrade(&app);
+        bridge.on_copy_task(move || if let Some(a) = w.upgrade() { a.copy_task() });
+        let w = Rc::downgrade(&app);
+        bridge.on_paste_task(move || if let Some(a) = w.upgrade() { a.paste_task() });
+        let w = Rc::downgrade(&app);
+        bridge.on_clipboard_has_task(move || w.upgrade().is_some_and(|a| a.clipboard_has_task()));
     }
 
     // マウスの戻る・進むボタン。Slint では押した位置の部品にクリックとして届くので、
@@ -1065,6 +1135,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if release {
                     w.dispatch_event(WindowEvent::PointerReleased { position: at(1.0), button: PointerEventButton::Left });
                 }
+            } else if let Some(args) = step.strip_prefix("move:") {
+                // move:x,y マウスを動かすだけ（ホバーの確認用）
+                let v: Vec<f32> = args.split(',').filter_map(|n| n.trim().parse().ok()).collect();
+                let [x, y] = v[..] else { return };
+                w.dispatch_event(WindowEvent::PointerMoved { position: slint::LogicalPosition::new(x, y) });
             } else if let Some(args) = step.strip_prefix("release:") {
                 let v: Vec<f32> = args.split(',').filter_map(|n| n.trim().parse().ok()).collect();
                 let [x, y] = v[..] else { return };

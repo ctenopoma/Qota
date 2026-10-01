@@ -76,7 +76,21 @@ component UpcomingCard inherits Rectangle {
     border-color: ta.has-hover ? Theme.mute : Theme.border;
     clip: true;
 
+    // 一覧の並びが変わって、マウスの下の行に別のタスクが入ったとき
+    changed task => {
+        if ta.has-hover {
+            Bridge.hover-task = root.task.id;
+        }
+    }
+
     ta := TouchArea {
+        changed has-hover => {
+            if self.has-hover {
+                Bridge.hover-task = root.task.id;
+            } else if Bridge.hover-task == root.task.id {
+                Bridge.hover-task = "";
+            }
+        }
         mouse-cursor: pointer;
         clicked => {
             root.open(root.task.id);
@@ -189,7 +203,21 @@ component PlainCard inherits Rectangle {
     drop-shadow-blur: 2px;
     drop-shadow-color: #0000001a;
 
+    // 一覧の並びが変わって、マウスの下の行に別のタスクが入ったとき
+    changed task => {
+        if ta.has-hover {
+            Bridge.hover-task = root.task.id;
+        }
+    }
+
     ta := TouchArea {
+        changed has-hover => {
+            if self.has-hover {
+                Bridge.hover-task = root.task.id;
+            } else if Bridge.hover-task == root.task.id {
+                Bridge.hover-task = "";
+            }
+        }
         mouse-cursor: pointer;
         clicked => {
             root.open(root.task.id);
@@ -814,7 +842,21 @@ component TaskChip inherits Rectangle {
     background: Theme.panel;
     opacity: root.task.done ? 0.5 : 1;
 
+    // 一覧の並びが変わって、マウスの下の行に別のタスクが入ったとき
+    changed task => {
+        if ta.has-hover {
+            Bridge.hover-task = root.task.id;
+        }
+    }
+
     ta := TouchArea {
+        changed has-hover => {
+            if self.has-hover {
+                Bridge.hover-task = root.task.id;
+            } else if Bridge.hover-task == root.task.id {
+                Bridge.hover-task = "";
+            }
+        }
         mouse-cursor: pointer;
         clicked => {
             root.open(root.task.id);

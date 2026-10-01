@@ -101,8 +101,22 @@ export component TaskRow inherits Rectangle {
     callback delete(id: string);
     callback toggle-subtask(task-id: string, subtask-id: string);
 
+    // 一覧の並びが変わって、マウスの下の行に別のタスクが入ったとき
+    changed task => {
+        if hover.has-hover {
+            Bridge.hover-task = root.task.id;
+        }
+    }
+
     VerticalLayout {
         hover := TouchArea {
+            changed has-hover => {
+                if self.has-hover {
+                    Bridge.hover-task = root.task.id;
+                } else if Bridge.hover-task == root.task.id {
+                    Bridge.hover-task = "";
+                }
+            }
             Rectangle {
                 background: hover.has-hover ? Theme.panel2 : transparent;
             }
@@ -324,6 +338,7 @@ export component TaskTable inherits Rectangle {
             padding-bottom: 8px;
             composer := Input {
                 placeholder: "+ 新しいタスク (Enter で追加)";
+                task-paste: true;
                 accepted(text) => {
                     root.add-task(text);
                     self.text = "";

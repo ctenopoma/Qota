@@ -20,6 +20,8 @@ thiserror = "1"
 parking_lot = "0.12"
 rfd = "0.17"
 dirs = "6"
+# タスクのコピーでタイトルを OS のクリップボードにも置く（Slint の winit バックエンドも使っている）
+arboard = { version = "3", default-features = false }
 
 [build-dependencies]
 slint-build = "1.18"
