@@ -25,7 +25,7 @@ cargo test --release
 
 データは `%APPDATA%\com.example.qota\qota.json`。別の場所を使うときは `QOTA_DATA_DIR` を指定する。同じフォルダに `backups\`（自動バックアップ）、`window.json`（ウィンドウの大きさ）、`ui-state.json`（サイドバーなどの開閉）、`qota.lock`（二重起動の防止）を置く。
 
-開発用に `QOTA_OPEN=detail|palette|settings|upcoming|calendar|projects|tags|search|notif|confirm|toast` で起動直後にその画面を開ける。`QOTA_STEPS="click:x,y;drag:x1,y1,x2,y2;type:abc;ctrl:z;alt:left;esc;enter;close"` を付けると、起動 5 秒後から 1 秒おきにその操作をウィンドウへ直接送る（実際のマウス・キーボードは使わない。動作確認用）。
+開発用に `QOTA_OPEN=detail|palette|settings|upcoming|calendar|projects|tags|search|notif|confirm|toast` で起動直後にその画面を開ける。`QOTA_STEPS="click:x,y;drag:x1,y1,x2,y2;wheel:x,y,dy;shiftwheel:x,y,dy;type:abc;ctrl:z;alt:left;esc;enter;close"` を付けると、起動 5 秒後から 1 秒おきにその操作をウィンドウへ直接送る（実際のマウス・キーボードは使わない。動作確認用）。
 
 ## 構成
 
@@ -66,6 +66,7 @@ cargo test --release
 - 標準の `DatePickerPopup` は英語表記で「今日」が無いので、日本語の `DatePopup` を自作した
 - `backdrop-blur` は無いので、カレンダーの日付の一覧は半透明の背景で覆う
 - 折り返し (wrap) の `Text` を ScrollView の中に置くと、開いた直後に一番下までスクロールしてしまうので、設定画面の説明は行を分けて `Label` で出している
+- `ScrollView` は縦ホイールで横に動かない（横に動くのは Shift+ホイールと横ホイールだけ）。今後・プロジェクト・タグの横並びの列は、列が縦にスクロールしなかった縦ホイールを `Board` の `TouchArea` で受けて横スクロールに回している
 - マウスの戻る・進むボタンは押した位置の部品に届くので、`unstable-winit-030` 機能の `on_winit_window_event` で部品より先に受け取っている。Slint を上げるときはこの API の変更に注意
 - ライセンス: Royalty-free ライセンスの条件として設定画面に `AboutSlint` を置いている（配布ページにも Slint のバッジが要る）
 

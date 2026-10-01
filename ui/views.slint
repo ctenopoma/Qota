@@ -341,20 +341,33 @@ component SmallButton inherits Rectangle {
 }
 
 // 横スクロールで列を並べる。列の中身は呼び出し側が @children で入れる
-component Board inherits ScrollView {
+component Board inherits Rectangle {
     in property <int> count;
     in property <length> column-width: 280px;
     in property <length> gap: 12px;
     in property <length> pad: 16px;
     vertical-stretch: 1;
-    content-width: max(self.visible-width, root.count * (root.column-width + root.gap) - root.gap + 2 * root.pad);
-    content-height: self.visible-height;
-    HorizontalLayout {
-        height: root.visible-height;
-        padding: root.pad;
-        spacing: root.gap;
-        alignment: start;
-        @children
+    // ScrollView が横に動くのは Shift+ホイールと横ホイールだけなので、
+    // 列が縦にスクロールしなかった縦ホイールをここで受けて横へ回す
+    TouchArea {
+        scroll-event(event) => {
+            if event.delta-y != 0 && event.delta-x == 0 && !event.modifiers.shift {
+                sv.content-x = max(sv.visible-width - sv.content-width, min(0px, sv.content-x + event.delta-y));
+                return accept;
+            }
+            reject
+        }
+        sv := ScrollView {
+            content-width: max(self.visible-width, root.count * (root.column-width + root.gap) - root.gap + 2 * root.pad);
+            content-height: self.visible-height;
+            HorizontalLayout {
+                height: sv.visible-height;
+                padding: root.pad;
+                spacing: root.gap;
+                alignment: start;
+                @children
+            }
+        }
     }
 }
 

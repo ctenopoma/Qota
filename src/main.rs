@@ -1070,6 +1070,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     w.dispatch_event(WindowEvent::PointerMoved { position: at(i as f32 / 10.0) });
                 }
                 w.dispatch_event(WindowEvent::PointerReleased { position: at(1.0), button: PointerEventButton::Left });
+            } else if let Some((shift, args)) = step.strip_prefix("wheel:").map(|a| (false, a))
+                .or_else(|| step.strip_prefix("shiftwheel:").map(|a| (true, a)))
+            {
+                // wheel:x,y,dy / shiftwheel:x,y,dy  ホイールを回す（dy が負なら下へ回したのと同じ）
+                let v: Vec<f32> = args.split(',').filter_map(|n| n.trim().parse().ok()).collect();
+                let [x, y, dy] = v[..] else { return };
+                let position = slint::LogicalPosition::new(x, y);
+                if shift {
+                    w.dispatch_event(WindowEvent::KeyPressed { text: Key::Shift.into() });
+                }
+                w.dispatch_event(WindowEvent::PointerMoved { position });
+                w.dispatch_event(WindowEvent::PointerScrolled { position, delta_x: 0.0, delta_y: dy });
+                if shift {
+                    w.dispatch_event(WindowEvent::KeyReleased { text: Key::Shift.into() });
+                }
             } else if let Some(text) = step.strip_prefix("type:") {
                 for c in text.chars() {
                     press(c.to_string().into());
