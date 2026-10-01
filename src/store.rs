@@ -5,15 +5,13 @@ use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 use crate::error::Result;
 use crate::models::AppData;
 
-/// 現行 Tauri 版 (identifier = com.example.qota) のデータ置き場。
-pub const TAURI_IDENTIFIER: &str = "com.example.qota";
-/// 試作のあいだは Tauri 版の qota.json に触れないよう、別ディレクトリを使う。
-pub const PROTOTYPE_IDENTIFIER: &str = "com.example.qota.slint";
+/// データ置き場（%APPDATA% の下のフォルダ名）
+pub const DATA_IDENTIFIER: &str = "com.example.qota";
 
 /// 毎日のバックアップを何日分残すか
 const BACKUP_KEEP: usize = 7;
 
-/// `QOTA_DATA_DIR` があればそれを、無ければ `%APPDATA%\com.example.qota.slint` を使う。
+/// `QOTA_DATA_DIR` があればそれを、無ければ `%APPDATA%\com.example.qota` を使う。
 /// ここではパスを決めるだけで、書き込みは二重起動のロックを取ってから行う。
 pub fn resolve_data_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("QOTA_DATA_DIR") {
@@ -21,22 +19,7 @@ pub fn resolve_data_dir() -> PathBuf {
     }
     dirs::data_dir()
         .expect("failed to resolve data dir")
-        .join(PROTOTYPE_IDENTIFIER)
-}
-
-/// 既定のデータフォルダのときだけ、初回に Tauri 版の qota.json をコピーしてくる（元ファイルは書き換えない）。
-pub fn seed_from_tauri_if_missing(dir: &Path) -> Result<()> {
-    if std::env::var_os("QOTA_DATA_DIR").is_some() {
-        return Ok(());
-    }
-    let dest = dir.join("qota.json");
-    let src = dirs::data_dir().map(|d| d.join(TAURI_IDENTIFIER).join("qota.json"));
-    if let Some(src) = src.filter(|s| s.exists()) {
-        if !dest.exists() {
-            std::fs::copy(&src, &dest)?;
-        }
-    }
-    Ok(())
+        .join(DATA_IDENTIFIER)
 }
 
 pub struct AppState {

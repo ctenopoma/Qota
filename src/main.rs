@@ -588,11 +588,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let dir = store::resolve_data_dir();
     std::fs::create_dir_all(&dir)?;
-    // 二重起動の防止。データに触る前（Tauri 版からのコピーや起動時の整理より前）にロックを取り、main の最後まで持つ
+    // 二重起動の防止。データに触る前（起動時の整理より前）にロックを取り、main の最後まで持つ
     let Some(_instance_lock) = instance::lock_or_activate(&dir)? else {
         return Ok(());
     };
-    store::seed_from_tauri_if_missing(&dir)?;
     let state = AppState::load_or_init(dir.clone())?;
     let ui = AppWindow::new()?;
 
