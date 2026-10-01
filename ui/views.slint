@@ -549,6 +549,8 @@ export component ProjectsView inherits Rectangle {
             for col in root.columns: ColumnFrame {
                 column-width: 288px;
                 if root.editing-id == col.id: VerticalLayout {
+                    // 列の残りの高さはタスクの一覧に回す（伸ばすと入力欄とボタンが縦に大きくなる）
+                    vertical-stretch: 0;
                     padding: 12px;
                     spacing: 8px;
                     Swatches {
