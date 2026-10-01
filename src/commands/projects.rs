@@ -60,6 +60,10 @@ pub fn move_project_before(state: &AppState, id: &str, before: Option<&str>) -> 
             None => data.projects.len(),
         };
         data.projects.insert(to, project);
+        // 自分の直前・直後への移動は並びが変わらないので保存しない（取り消しの履歴にも積まれない）
+        if to == from {
+            return Ok(());
+        }
     }
     state.save()
 }

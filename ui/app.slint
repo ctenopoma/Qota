@@ -128,7 +128,7 @@ export component AppWindow inherits Window {
     callback update-project(id: string, name: string, color: string);
     callback delete-project(id: string);
     // サイドバーのドラッグ&ドロップ。slot は表示中（アーカイブ以外）の並びでの挿入位置
-    callback move-project(payload: string, slot: int);
+    callback move-project(payload: string, before: string);
     callback add-tag(name: string);
     callback delete-tag(id: string);
     callback search-query(q: string);
@@ -254,8 +254,8 @@ export component AppWindow inherits Window {
                 notif => {
                     root.notif-open = true;
                 }
-                move-project(payload, slot) => {
-                    root.move-project(payload, slot);
+                move-project(payload, before) => {
+                    root.move-project(payload, before);
                 }
             }
 
@@ -320,6 +320,7 @@ export component AppWindow inherits Window {
                     add-project(name, color) => { root.add-project-color(name, color); }
                     update-project(id, name, color) => { root.update-project(id, name, color); }
                     delete-project(id) => { root.delete-project(id); }
+                    move-project(payload, before) => { root.move-project(payload, before); }
                 }
 
                 if root.view == "tags": TagsView {

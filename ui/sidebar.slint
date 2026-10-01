@@ -93,8 +93,8 @@ export component Sidebar inherits Rectangle {
     callback notif();
     callback toggle-open();
     callback add-project(name: string);
-    // プロジェクトのドラッグ&ドロップ。slot は表示中の並びでの挿入位置（0 = 先頭の前）
-    callback move-project(payload: string, slot: int);
+    // プロジェクトのドラッグ&ドロップ。before はその前に入れるプロジェクト（空なら末尾）
+    callback move-project(payload: string, before: string);
 
     property <int> project-slot: -1;
 
@@ -273,7 +273,8 @@ export component Sidebar inherits Rectangle {
                                     event.proposed-action
                                 }
                                 dropped(event) => {
-                                    root.move-project(Bridge.payload-text(event.data), root.project-slot);
+                                    root.move-project(Bridge.payload-text(event.data),
+                                        root.project-slot < root.projects.length ? root.projects[root.project-slot].id : "");
                                     root.project-slot = -1;
                                     event.proposed-action
                                 }

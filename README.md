@@ -7,7 +7,7 @@ Rust + [Slint](https://slint.dev/) で作っている。
 
 - 今日 / 受信箱 / 今後（カンバン）/ カレンダー / プロジェクト別の一覧
 - タスク詳細: 優先度・期日・繰り返し・プロジェクト・タグ・メモ・サブタスク（ドラッグで並び替え）
-- プロジェクト一覧（未完了のタスクだけを表示。色・名前の編集、サイドバーでドラッグして並び替え）、タグ
+- プロジェクト一覧（未完了のタスクだけを表示。色・名前の編集。列の見出しかサイドバーをドラッグして並び替え、両方の並びは同じ）、タグ
 - コマンドパレット (Ctrl+K)、検索 (Ctrl+/)、期限切れ・今日の通知
 - Ctrl+Z / Ctrl+Y で操作の取り消し・やり直し、マウスの戻る・進むボタン（Alt+← / Alt+→）で画面の行き来
 - ライト / ダーク、JSON のエクスポート / インポート、毎日の自動バックアップ
@@ -25,7 +25,7 @@ cargo test --release
 
 データは `%APPDATA%\com.example.qota\qota.json`。別の場所を使うときは `QOTA_DATA_DIR` を指定する。同じフォルダに `backups\`（自動バックアップ）、`window.json`（ウィンドウの大きさ）、`ui-state.json`（サイドバーなどの開閉）、`qota.lock`（二重起動の防止）を置く。
 
-開発用に `QOTA_OPEN=detail|palette|settings|upcoming|calendar|projects|tags|search|notif|confirm|toast` で起動直後にその画面を開ける。`QOTA_STEPS="click:x,y;drag:x1,y1,x2,y2;wheel:x,y,dy;shiftwheel:x,y,dy;type:abc;ctrl:z;alt:left;esc;enter;close"` を付けると、起動 5 秒後から 1 秒おきにその操作をウィンドウへ直接送る（実際のマウス・キーボードは使わない。動作確認用）。
+開発用に `QOTA_OPEN=detail|palette|settings|upcoming|calendar|projects|tags|search|notif|confirm|toast` で起動直後にその画面を開ける。`QOTA_STEPS="click:x,y;drag:x1,y1,x2,y2;hold:x1,y1,x2,y2;release:x,y;wheel:x,y,dy;shiftwheel:x,y,dy;type:abc;ctrl:z;alt:left;esc;enter;close"` を付けると、起動 5 秒後から 1 秒おきにその操作をウィンドウへ直接送る（実際のマウス・キーボードは使わない。動作確認用。`hold` は押したまま動かして離さないので、`release` までのドラッグ中の表示を撮れる）。
 
 ## 構成
 
@@ -77,7 +77,7 @@ cargo test --release
 ## 手で確かめてほしいこと
 
 - [ ] 日本語 IME: 新規タスク欄・詳細のタイトル・メモ・サブタスク追加で、変換中の表示と候補ウィンドウの位置
-- [ ] サブタスクとサイドバーのプロジェクトのドラッグ並び替え（挿入位置の緑の線、ドロップ後の順序が保存されること）
+- [ ] サブタスク、サイドバーのプロジェクト、プロジェクト一覧の列のドラッグ並び替え（挿入位置の緑の線、ドロップ後の順序が保存されること）
 - [ ] 期日・終了日の日付ピッカー、優先度・頻度・プロジェクトのセレクト
 - [ ] エクスポート / インポート / バックアップから戻すのファイルダイアログ、リセットの確認ダイアログ
 - [ ] プロジェクトの編集（✎ → 保存）、プロジェクト・タグの削除と「元に戻す」

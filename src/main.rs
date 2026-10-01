@@ -913,20 +913,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             a.toast(format!("{name}を削除しました"), true, false);
         }
     });
-    on!(on_move_project, |a, payload, slot| {
-        // サイドバーはアーカイブ以外だけを並べているので、挿入位置を「その位置にあるプロジェクトの前」に直す
+    on!(on_move_project, |a, payload, before| {
+        // サイドバーとプロジェクト一覧の両方から来る。before はその前に入れるプロジェクト（空なら末尾）
         let Some(id) = payload.strip_prefix("project:").map(str::to_string) else { return };
-        let before = {
-            let d = a.state.data.lock();
-            let visible: Vec<&str> = d.projects.iter().filter(|p| !p.archived).map(|p| p.id.as_str()).collect();
-            let from = visible.iter().position(|p| *p == id);
-            let slot = slot.max(0) as usize;
-            // 自分の直前・直後への移動は何もしない
-            if from.is_some_and(|f| slot == f || slot == f + 1) {
-                return;
-            }
-            visible.get(slot).map(|p| p.to_string())
-        };
+        let before = (!before.is_empty()).then(|| before.to_string());
         a.mutate(|_| "プロジェクトの並び替え".into(), |s| projects::move_project_before(s, &id, before.as_deref()));
     });
     on!(on_add_tag, |a, name| {
@@ -1059,8 +1049,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 w.dispatch_event(WindowEvent::PointerMoved { position });
                 w.dispatch_event(WindowEvent::PointerPressed { position, button: PointerEventButton::Left });
                 w.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
-            } else if let Some(args) = step.strip_prefix("drag:") {
-                // drag:x1,y1,x2,y2 押して、少しずつ動かして、離す
+            } else if let Some((release, args)) = step.strip_prefix("drag:").map(|a| (true, a))
+                .or_else(|| step.strip_prefix("hold:").map(|a| (false, a)))
+            {
+                // drag:x1,y1,x2,y2 押して、少しずつ動かして、離す。
+                // hold: は離さない（ドラッグ中の表示を撮る用。release:x,y で離す）
                 let v: Vec<f32> = args.split(',').filter_map(|n| n.trim().parse().ok()).collect();
                 let [x1, y1, x2, y2] = v[..] else { return };
                 let at = |t: f32| slint::LogicalPosition::new(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
@@ -1069,7 +1062,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for i in 1..=10 {
                     w.dispatch_event(WindowEvent::PointerMoved { position: at(i as f32 / 10.0) });
                 }
-                w.dispatch_event(WindowEvent::PointerReleased { position: at(1.0), button: PointerEventButton::Left });
+                if release {
+                    w.dispatch_event(WindowEvent::PointerReleased { position: at(1.0), button: PointerEventButton::Left });
+                }
+            } else if let Some(args) = step.strip_prefix("release:") {
+                let v: Vec<f32> = args.split(',').filter_map(|n| n.trim().parse().ok()).collect();
+                let [x, y] = v[..] else { return };
+                let position = slint::LogicalPosition::new(x, y);
+                w.dispatch_event(WindowEvent::PointerMoved { position });
+                w.dispatch_event(WindowEvent::PointerReleased { position, button: PointerEventButton::Left });
             } else if let Some((shift, args)) = step.strip_prefix("wheel:").map(|a| (false, a))
                 .or_else(|| step.strip_prefix("shiftwheel:").map(|a| (true, a)))
             {

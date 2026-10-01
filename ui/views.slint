@@ -504,11 +504,14 @@ export component ProjectsView inherits Rectangle {
     callback add-project(name: string, color: string);
     callback update-project(id: string, name: string, color: string);
     callback delete-project(id: string);
+    // 見出しのドラッグで並び替え。before はその前に入れるプロジェクト（空なら末尾）
+    callback move-project(payload: string, before: string);
 
     property <string> new-color: "#ef4444";
     property <string> editing-id;
     property <string> edit-color;
     property <string> edit-name;
+    property <int> drop-slot: -1;
 
     VerticalLayout {
         Header {
@@ -546,124 +549,167 @@ export component ProjectsView inherits Rectangle {
             column-width: 288px;
             gap: 24px;
             pad: 24px;
-            for col in root.columns: ColumnFrame {
-                column-width: 288px;
-                if root.editing-id == col.id: VerticalLayout {
-                    // 列の残りの高さはタスクの一覧に回す（伸ばすと入力欄とボタンが縦に大きくなる）
-                    vertical-stretch: 0;
-                    padding: 12px;
-                    spacing: 8px;
-                    Swatches {
-                        selected <=> root.edit-color;
-                    }
-
-                    Input {
-                        bordered: true;
-                        text: col.title;
-                        init => {
-                            self.focus();
-                        }
-                        edited(text) => {
-                            root.edit-name = text;
-                        }
-                        accepted(text) => {
-                            root.update-project(col.id, text, root.edit-color);
-                            root.editing-id = "";
-                        }
-                    }
-
-                    HorizontalLayout {
-                        alignment: end;
-                        spacing: 8px;
-                        SmallButton {
-                            text: "キャンセル";
-                            clicked => {
-                                root.editing-id = "";
-                            }
-                        }
-
-                        SmallButton {
-                            text: "保存";
-                            primary: true;
-                            clicked => {
-                                root.update-project(col.id, root.edit-name, root.edit-color);
-                                root.editing-id = "";
-                            }
-                        }
-                    }
+            for col[i] in root.columns: pdrop := DropArea {
+                width: 288px;
+                // 列の左半分なら前、右半分なら後ろに入れる
+                can-drop(event) => {
+                    root.drop-slot = event.position.x < self.width / 2 ? i : i + 1;
+                    event.proposed-action
+                }
+                dropped(event) => {
+                    root.move-project(Bridge.payload-text(event.data),
+                        root.drop-slot < root.columns.length ? root.columns[root.drop-slot].id : "");
+                    root.drop-slot = -1;
+                    event.proposed-action
                 }
 
-                if root.editing-id != col.id: HorizontalLayout {
-                    padding-left: 16px;
-                    padding-right: 12px;
-                    padding-top: 12px;
-                    padding-bottom: 12px;
-                    spacing: 8px;
-                    title-ta := TouchArea {
-                        horizontal-stretch: 1;
-                        mouse-cursor: pointer;
-                        clicked => {
-                            root.open-project(col.id);
+                ColumnFrame {
+                    column-width: 288px;
+                    height: 100%;
+                    if root.editing-id == col.id: VerticalLayout {
+                        // 列の残りの高さはタスクの一覧に回す（伸ばすと入力欄とボタンが縦に大きくなる）
+                        vertical-stretch: 0;
+                        padding: 12px;
+                        spacing: 8px;
+                        Swatches {
+                            selected <=> root.edit-color;
                         }
+
+                        Input {
+                            bordered: true;
+                            text: col.title;
+                            init => {
+                                self.focus();
+                            }
+                            edited(text) => {
+                                root.edit-name = text;
+                            }
+                            accepted(text) => {
+                                root.update-project(col.id, text, root.edit-color);
+                                root.editing-id = "";
+                            }
+                        }
+
                         HorizontalLayout {
+                            alignment: end;
                             spacing: 8px;
-                            alignment: start;
-                            VerticalLayout {
-                                alignment: center;
-                                Dot {
-                                    size: 8px;
-                                    dot-color: col.color;
+                            SmallButton {
+                                text: "キャンセル";
+                                clicked => {
+                                    root.editing-id = "";
+                                }
+                            }
+
+                            SmallButton {
+                                text: "保存";
+                                primary: true;
+                                clicked => {
+                                    root.update-project(col.id, root.edit-name, root.edit-color);
+                                    root.editing-id = "";
+                                }
+                            }
+                        }
+                    }
+
+                    if root.editing-id != col.id: DragArea {
+                        vertical-stretch: 0;
+                        allow-move: true;
+                        // サイドバーと同じ payload。サブタスクのドロップ先と取り違えないよう種類を付ける
+                        data: Bridge.payload("project:" + col.id);
+                        drag-finished(action) => {
+                            root.drop-slot = -1;
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            padding-right: 12px;
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            spacing: 8px;
+                            title-ta := TouchArea {
+                                horizontal-stretch: 1;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.open-project(col.id);
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Dot {
+                                            size: 8px;
+                                            dot-color: col.color;
+                                        }
+                                    }
+
+                                    Label {
+                                        text: col.title;
+                                        font-weight: 600;
+                                        mono: true;
+                                        underline: title-ta.has-hover;
+                                    }
                                 }
                             }
 
                             Label {
-                                text: col.title;
-                                font-weight: 600;
+                                text: col.sub;
+                                text-color: Theme.faint;
+                                font-size: Theme.fs-2xs;
                                 mono: true;
-                                underline: title-ta.has-hover;
+                            }
+
+                            TextButton {
+                                text: "✎";
+                                family: Theme.symbol;
+                                font-size: Theme.fs-sm;
+                                text-color: Theme.faint;
+                                clicked => {
+                                    root.edit-name = col.title;
+                                    root.edit-color = col.color-key;
+                                    root.editing-id = col.id;
+                                }
+                            }
+
+                            TextButton {
+                                text: "×";
+                                font-size: Theme.fs-sm;
+                                text-color: Theme.faint;
+                                hover-color: Theme.high;
+                                clicked => {
+                                    root.delete-project(col.id);
+                                }
                             }
                         }
                     }
 
-                    Label {
-                        text: col.sub;
-                        text-color: Theme.faint;
-                        font-size: Theme.fs-2xs;
-                        mono: true;
-                    }
-
-                    TextButton {
-                        text: "✎";
-                        family: Theme.symbol;
-                        font-size: Theme.fs-sm;
-                        text-color: Theme.faint;
-                        clicked => {
-                            root.edit-name = col.title;
-                            root.edit-color = col.color-key;
-                            root.editing-id = col.id;
+                    ColumnBody {
+                        gap: 8px;
+                        if col.tasks.length == 0: EmptyNote {
+                            note: "未完了のタスクなし";
                         }
-                    }
-
-                    TextButton {
-                        text: "×";
-                        font-size: Theme.fs-sm;
-                        text-color: Theme.faint;
-                        hover-color: Theme.high;
-                        clicked => {
-                            root.delete-project(col.id);
+                        for t in col.tasks: PlainCard {
+                            task: t;
+                            open(id) => { root.open(id); }
                         }
                     }
                 }
 
-                ColumnBody {
-                    gap: 8px;
-                    if col.tasks.length == 0: EmptyNote {
-                        note: "未完了のタスクなし";
-                    }
-                    for t in col.tasks: PlainCard {
-                        task: t;
-                        open(id) => { root.open(id); }
-                    }
+                // 挿入位置のインジケータ（列のあいだ 24px の中央に縦線）
+                Rectangle {
+                    x: -12px - 1.5px;
+                    width: 3px;
+                    border-radius: 1.5px;
+                    background: Theme.accent;
+                    visible: pdrop.has-drag && root.drop-slot == i;
+                }
+
+                Rectangle {
+                    x: parent.width + 12px - 1.5px;
+                    width: 3px;
+                    border-radius: 1.5px;
+                    background: Theme.accent;
+                    visible: pdrop.has-drag && root.drop-slot == i + 1;
                 }
             }
         }
