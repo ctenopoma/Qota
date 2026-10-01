@@ -347,25 +347,92 @@ component Board inherits Rectangle {
     in property <length> gap: 12px;
     in property <length> pad: 16px;
     vertical-stretch: 1;
+    // 列が画面に収まらないときだけ、下に横スクロールバーを出す
+    // （標準の ScrollView のバーは 2px の線で、ホバーするまでほぼ見えない）
+    property <length> total-width: root.count * (root.column-width + root.gap) - root.gap + 2 * root.pad;
+    property <bool> overflow: root.total-width > root.width + 1px;
+    property <length> bar-area: root.overflow ? 20px : 0px;
+    property <length> max-scroll: sv.content-width - sv.visible-width;
+
+    function scroll-to(x: length) {
+        sv.content-x = max(-root.max-scroll, min(0px, x));
+    }
+
     // ScrollView が横に動くのは Shift+ホイールと横ホイールだけなので、
     // 列が縦にスクロールしなかった縦ホイールをここで受けて横へ回す
     TouchArea {
+        y: 0;
+        height: root.height - root.bar-area;
         scroll-event(event) => {
             if event.delta-y != 0 && event.delta-x == 0 && !event.modifiers.shift {
-                sv.content-x = max(sv.visible-width - sv.content-width, min(0px, sv.content-x + event.delta-y));
+                root.scroll-to(sv.content-x + event.delta-y);
                 return accept;
             }
             reject
         }
         sv := ScrollView {
-            content-width: max(self.visible-width, root.count * (root.column-width + root.gap) - root.gap + 2 * root.pad);
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            content-width: max(self.visible-width, root.total-width);
             content-height: self.visible-height;
             HorizontalLayout {
                 height: sv.visible-height;
                 padding: root.pad;
+                padding-bottom: root.overflow ? 8px : root.pad;
                 spacing: root.gap;
                 alignment: start;
                 @children
+            }
+        }
+    }
+
+    if root.overflow: track := Rectangle {
+        x: root.pad;
+        y: root.height - 16px;
+        width: root.width - 2 * root.pad;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.panel2;
+        property <length> thumb-width: max(40px, self.width * sv.visible-width / sv.content-width);
+        property <length> travel: self.width - self.thumb-width;
+        property <length> grab-offset;
+
+        Rectangle {
+            x: root.max-scroll > 0 ? track.travel * (-sv.content-x / root.max-scroll) : 0;
+            width: track.thumb-width;
+            border-radius: 4px;
+            background: bar-touch.pressed || bar-touch.has-hover ? Theme.mute : Theme.faint;
+        }
+
+        bar-touch := TouchArea {
+            // 上下に少し広げて、細いバーでもつかみやすくする
+            y: -6px;
+            height: parent.height + 12px;
+            mouse-cursor: default;
+            pointer-event(event) => {
+                if event.button == PointerEventButton.left && event.kind == PointerEventKind.down {
+                    // つまみの上なら掴んだ位置を保つ。溝なら、つまみの中央をそこへ移す
+                    let thumb-x = root.max-scroll > 0 ? track.travel * (-sv.content-x / root.max-scroll) : 0;
+                    track.grab-offset = self.mouse-x >= thumb-x && self.mouse-x <= thumb-x + track.thumb-width
+                        ? self.mouse-x - thumb-x : track.thumb-width / 2;
+                    self.follow();
+                }
+            }
+            moved => {
+                if self.pressed {
+                    self.follow();
+                }
+            }
+            function follow() {
+                if track.travel > 0 {
+                    root.scroll-to(-(self.mouse-x - track.grab-offset) / track.travel * root.max-scroll);
+                }
+            }
+            scroll-event(event) => {
+                if event.delta-y != 0 || event.delta-x != 0 {
+                    root.scroll-to(sv.content-x + (event.delta-x != 0 ? event.delta-x : event.delta-y));
+                    return accept;
+                }
+                reject
             }
         }
     }
