@@ -1,0 +1,99 @@
+// Rust 側 (src/view.rs) で AppData から組み立てて渡す表示用の型。
+// priority は 0 = なし, 1 = high, 2 = medium, 3 = low。
+
+export struct SubtaskItem {
+    id: string,
+    title: string,
+    done: bool,
+}
+
+export struct TaskItem {
+    id: string,
+    title: string,
+    done: bool,
+    priority: int,
+    due-label: string,
+    overdue: bool,
+    due-year: int,
+    due-month: int,
+    due-day: int,
+    project-name: string,
+    project-color: color,
+    tags: [string],
+    repeating: bool,
+    sub-done: int,
+    sub-total: int,
+    subtasks: [SubtaskItem],
+    // サブタスクの展開状態。行が作り直されても消えないよう Rust 側で持つ
+    expanded: bool,
+}
+
+export struct NavProject {
+    id: string,
+    name: string,
+    color: color,
+}
+
+export struct TagChip {
+    id: string,
+    name: string,
+    on: bool,
+}
+
+export struct TaskDetailData {
+    id: string,
+    title: string,
+    notes: string,
+    done: bool,
+    priority: int,
+    due-label: string,
+    due-year: int,
+    due-month: int,
+    due-day: int,
+    project-index: int,
+    repeating: bool,
+    interval-index: int,
+    recurrence-end-label: string,
+    recurrence-end-year: int,
+    recurrence-end-month: int,
+    recurrence-end-day: int,
+}
+
+// 日付ピッカーの 1 マス。前後の月の日も並べるので in-month で区別する（今日かどうかは Bridge.today-* と比べる）
+export struct CalendarDay {
+    year: int,
+    month: int,
+    day: int,
+    in-month: bool,
+}
+
+export struct Command {
+    label: string,
+    sub: string,
+    view: string,
+    project-id: string,
+}
+
+// 今後（カンバン）・プロジェクト一覧・タグの列
+export struct Column {
+    id: string,
+    title: string,
+    // 見出しの右に出す件数や「完了/全体」
+    sub: string,
+    color: color,
+    has-color: bool,
+    // プロジェクトの色の元の文字列（編集で今の色を選んだ状態にするため）
+    color-key: string,
+    tasks: [TaskItem],
+}
+
+// カレンダーの 1 マス。day == 0 は月初めの前の空白
+export struct CalCell {
+    year: int,
+    month: int,
+    day: int,
+    today: bool,
+    // 先頭 2 件だけ。残りの件数は more
+    tasks: [TaskItem],
+    more: int,
+}

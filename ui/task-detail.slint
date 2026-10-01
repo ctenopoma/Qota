@@ -1,0 +1,517 @@
+// 旧 Tauri 版の src/components/TaskDetail.tsx の移植。右側のドロワー + 半透明の背景。
+// サブタスクの並び替えは @dnd-kit の代わりに DragArea / DropArea (Slint 1.17+) を使う。
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Bridge } from "theme.slint";
+import { Check, Label, TextButton, Input, TextArea, Select, DateButton, HLine } from "widgets.slint";
+import { TaskDetailData, SubtaskItem, TagChip } from "types.slint";
+
+component FieldLabel inherits Label {
+    width: 80px;
+    text-color: Theme.mute;
+    font-size: Theme.fs-2xs;
+    mono: true;
+}
+
+component Field inherits HorizontalLayout {
+    spacing: 8px;
+    min-height: 22px;
+}
+
+export component TaskDetail inherits Rectangle {
+    in property <TaskDetailData> data;
+    in property <[SubtaskItem]> subtasks;
+    in property <[TagChip]> tags;
+    in property <[string]> project-options;
+
+    callback close();
+    callback update-title(id: string, title: string);
+    callback update-notes(id: string, notes: string);
+    callback toggle-status(id: string);
+    callback set-priority(id: string, p: int);
+    callback set-due(id: string, y: int, m: int, d: int);
+    callback clear-due(id: string);
+    callback set-project(id: string, index: int);
+    callback set-repeating(id: string, on: bool);
+    callback set-interval(id: string, index: int);
+    callback set-recurrence-end(id: string, y: int, m: int, d: int);
+    callback clear-recurrence-end(id: string);
+    callback toggle-tag(id: string, tag-id: string);
+    callback add-subtask(id: string, title: string);
+    callback toggle-subtask(id: string, subtask-id: string);
+    callback delete-subtask(id: string, subtask-id: string);
+    callback rename-subtask(id: string, subtask-id: string, title: string);
+    // 入力中の内容。保存はせず、閉じるとき・別のサブタスクへ移るときに Rust 側でまとめて確定する
+    callback draft-title(id: string, title: string);
+    callback draft-notes(id: string, notes: string);
+    callback draft-subtask(id: string, subtask-id: string, title: string);
+    callback commit-drafts();
+    // slot はドロップ位置（0 = 先頭の前, length = 末尾の後）
+    callback drop-subtask(id: string, subtask-id: string, slot: int);
+    callback duplicate(id: string);
+    callback delete(id: string);
+
+    property <int> hover-slot: -1;
+    property <string> editing-id;
+
+    // fixed inset-0 bg-black/40
+    background: #00000066;
+    TouchArea {
+        clicked => {
+            root.close();
+        }
+    }
+
+    panel := Rectangle {
+        x: root.width - self.width;
+        width: 480px;
+        height: root.height;
+        background: Theme.panel;
+
+        // パネル内のクリックで閉じないように受け止める
+        TouchArea { }
+
+        Rectangle {
+            x: 0;
+            width: 1px;
+            background: Theme.border;
+        }
+
+        VerticalLayout {
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 12px;
+                padding-bottom: 12px;
+                Label {
+                    horizontal-stretch: 1;
+                    text: "タスク詳細";
+                    text-color: Theme.faint;
+                    font-size: Theme.fs-2xs;
+                    mono: true;
+                    letter-spacing: 1.1px;
+                }
+
+                TextButton {
+                    text: "×";
+                    text-color: Theme.faint;
+                    clicked => {
+                        root.close();
+                    }
+                }
+            }
+
+            HLine { }
+
+            sv := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: max(self.visible-height, body.preferred-height);
+
+                body := VerticalLayout {
+                    width: sv.visible-width;
+                    alignment: start;
+                    padding: 16px;
+                    spacing: 16px;
+
+                    Input {
+                        text: root.data.title;
+                        font-size: Theme.fs-base;
+                        font-weight: 600;
+                        edited(text) => {
+                            root.draft-title(root.data.id, text);
+                        }
+                        accepted(text) => {
+                            root.update-title(root.data.id, text);
+                        }
+                        focus-out(text) => {
+                            if text != root.data.title {
+                                root.update-title(root.data.id, text);
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Field {
+                            FieldLabel {
+                                text: "状態";
+                            }
+
+                            TextButton {
+                                text: root.data.done ? "done" : "todo";
+                                text-color: Theme.ink;
+                                clicked => {
+                                    root.toggle-status(root.data.id);
+                                }
+                            }
+
+                            Rectangle { }
+                        }
+
+                        Field {
+                            FieldLabel {
+                                text: "優先度";
+                            }
+
+                            Select {
+                                horizontal-stretch: 1;
+                                options: ["–", "high", "medium", "low"];
+                                current-index: root.data.priority;
+                                selected(i) => {
+                                    root.set-priority(root.data.id, i);
+                                }
+                            }
+                        }
+
+                        Field {
+                            FieldLabel {
+                                text: "期日";
+                            }
+
+                            DateButton {
+                                horizontal-stretch: 1;
+                                bordered: true;
+                                label: root.data.due-label == "" ? "–" : root.data.due-label;
+                                text-color: Theme.ink;
+                                year: root.data.due-year;
+                                month: root.data.due-month;
+                                day: root.data.due-day;
+                                picked(y, m, d) => {
+                                    root.set-due(root.data.id, y, m, d);
+                                }
+                                cleared => {
+                                    root.clear-due(root.data.id);
+                                }
+                            }
+
+                            if root.data.due-label != "": TextButton {
+                                text: "×";
+                                text-color: Theme.faint;
+                                clicked => {
+                                    root.clear-due(root.data.id);
+                                }
+                            }
+                        }
+
+                        Field {
+                            FieldLabel {
+                                text: "繰り返し";
+                            }
+
+                            VerticalLayout {
+                                spacing: 8px;
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Check {
+                                            size: 13px;
+                                            checked: root.data.repeating;
+                                            toggled => {
+                                                root.set-repeating(root.data.id, !root.data.repeating);
+                                            }
+                                        }
+                                    }
+
+                                    Label {
+                                        text: "繰り返しを有効にする";
+                                        font-size: Theme.fs-xs;
+                                    }
+                                }
+
+                                if root.data.repeating: HorizontalLayout {
+                                    padding-left: 24px;
+                                    Rectangle {
+                                        width: 2px;
+                                        background: Theme.border.with-alpha(0.5);
+                                    }
+
+                                    VerticalLayout {
+                                        padding-left: 12px;
+                                        spacing: 8px;
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            Label {
+                                                width: 48px;
+                                                text: "頻度";
+                                                text-color: Theme.mute;
+                                                font-size: Theme.fs-xs;
+                                            }
+
+                                            Select {
+                                                horizontal-stretch: 1;
+                                                options: ["毎日", "平日", "毎週", "毎月", "毎年"];
+                                                current-index: root.data.interval-index;
+                                                selected(i) => {
+                                                    root.set-interval(root.data.id, i);
+                                                }
+                                            }
+                                        }
+
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            Label {
+                                                width: 48px;
+                                                text: "終了日";
+                                                text-color: Theme.mute;
+                                                font-size: Theme.fs-xs;
+                                            }
+
+                                            DateButton {
+                                                horizontal-stretch: 1;
+                                                bordered: true;
+                                                label: root.data.recurrence-end-label == "" ? "–" : root.data.recurrence-end-label;
+                                                text-color: Theme.ink;
+                                                year: root.data.recurrence-end-year;
+                                                month: root.data.recurrence-end-month;
+                                                day: root.data.recurrence-end-day;
+                                                picked(y, m, d) => {
+                                                    root.set-recurrence-end(root.data.id, y, m, d);
+                                                }
+                                                cleared => {
+                                                    root.clear-recurrence-end(root.data.id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Field {
+                            FieldLabel {
+                                text: "プロジェクト";
+                            }
+
+                            Select {
+                                horizontal-stretch: 1;
+                                options: root.project-options;
+                                current-index: root.data.project-index;
+                                selected(i) => {
+                                    root.set-project(root.data.id, i);
+                                }
+                            }
+                        }
+
+                        Field {
+                            FieldLabel {
+                                text: "タグ";
+                            }
+
+                            // flex-wrap gap-1
+                            FlexboxLayout {
+                                horizontal-stretch: 1;
+                                spacing: 4px;
+                                for tag in root.tags: TextButton {
+                                    text: "#" + tag.name;
+                                    bordered: true;
+                                    text-color: tag.on ? Theme.accent : Theme.mute;
+                                    hover-color: tag.on ? Theme.accent : Theme.ink;
+                                    border-color: tag.on ? Theme.accent : Theme.border;
+                                    clicked => {
+                                        root.toggle-tag(root.data.id, tag.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        Label {
+                            text: "メモ";
+                            text-color: Theme.faint;
+                            font-size: Theme.fs-2xs;
+                            mono: true;
+                            letter-spacing: 1.1px;
+                        }
+
+                        TextArea {
+                            text: root.data.notes;
+                            placeholder: "メモを追加…";
+                            edited(text) => {
+                                root.draft-notes(root.data.id, text);
+                            }
+                            focus-out(text) => {
+                                if text != root.data.notes {
+                                    root.update-notes(root.data.id, text);
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        Label {
+                            text: "サブタスク";
+                            text-color: Theme.faint;
+                            font-size: Theme.fs-2xs;
+                            mono: true;
+                            letter-spacing: 1.1px;
+                        }
+
+                        VerticalLayout {
+                            for s[i] in root.subtasks: Rectangle {
+                                height: 26px;
+
+                                drop := DropArea {
+                                    can-drop(event) => {
+                                        root.hover-slot = event.position.y < self.height / 2 ? i : i + 1;
+                                        event.proposed-action
+                                    }
+                                    dropped(event) => {
+                                        root.drop-subtask(root.data.id, Bridge.payload-text(event.data), root.hover-slot);
+                                        root.hover-slot = -1;
+                                        event.proposed-action
+                                    }
+
+                                    row := TouchArea {
+                                        HorizontalLayout {
+                                            spacing: 4px;
+
+                                            DragArea {
+                                                width: 20px;
+                                                allow-move: true;
+                                                data: Bridge.payload(s.id);
+                                                drag-finished(action) => {
+                                                    root.hover-slot = -1;
+                                                }
+                                                Label {
+                                                    width: 100%;
+                                                    height: 100%;
+                                                    text: "≡";
+                                                    align: center;
+                                                    text-color: parent.dragging ? Theme.accent : (row.has-hover ? Theme.ink : Theme.faint);
+                                                }
+                                            }
+
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Check {
+                                                    size: 12px;
+                                                    checked: s.done;
+                                                    toggled => {
+                                                        root.toggle-subtask(root.data.id, s.id);
+                                                    }
+                                                }
+                                            }
+
+                                            if root.editing-id == s.id: Input {
+                                                horizontal-stretch: 1;
+                                                text: s.title;
+                                                init => {
+                                                    self.focus();
+                                                }
+                                                edited(text) => {
+                                                    root.draft-subtask(root.data.id, s.id, text);
+                                                }
+                                                accepted(text) => {
+                                                    root.rename-subtask(root.data.id, s.id, text);
+                                                    root.editing-id = "";
+                                                }
+                                                focus-out(text) => {
+                                                    if root.editing-id == s.id {
+                                                        if text != s.title {
+                                                            root.rename-subtask(root.data.id, s.id, text);
+                                                        }
+                                                        root.editing-id = "";
+                                                    }
+                                                }
+                                            }
+
+                                            if root.editing-id != s.id: TouchArea {
+                                                horizontal-stretch: 1;
+                                                mouse-cursor: text;
+                                                clicked => {
+                                                    // 別のサブタスク名を編集中なら、その入力欄が消える前に確定する
+                                                    root.commit-drafts();
+                                                    root.editing-id = s.id;
+                                                }
+                                                HorizontalLayout {
+                                                    Label {
+                                                        horizontal-stretch: 1;
+                                                        text: s.title;
+                                                        strike: s.done;
+                                                        text-color: s.done ? Theme.mute : Theme.ink;
+                                                    }
+                                                }
+                                            }
+
+                                            TextButton {
+                                                visible: row.has-hover;
+                                                text: "×";
+                                                text-color: Theme.faint;
+                                                hover-color: Theme.high;
+                                                clicked => {
+                                                    root.delete-subtask(root.data.id, s.id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 挿入位置のインジケータ
+                                Rectangle {
+                                    y: 0;
+                                    height: 2px;
+                                    background: Theme.accent;
+                                    visible: drop.has-drag && root.hover-slot == i;
+                                }
+
+                                Rectangle {
+                                    y: parent.height - 2px;
+                                    height: 2px;
+                                    background: Theme.accent;
+                                    visible: drop.has-drag && root.hover-slot == i + 1;
+                                }
+                            }
+                        }
+
+                        Input {
+                            bordered: true;
+                            font-size: Theme.fs-2xs;
+                            placeholder: "+ サブタスクを追加";
+                            accepted(text) => {
+                                root.add-subtask(root.data.id, text);
+                                self.text = "";
+                            }
+                        }
+                    }
+                }
+            }
+
+            HLine { }
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                TextButton {
+                    text: "タスクを複製";
+                    text-color: Theme.faint;
+                    underline-on-hover: true;
+                    clicked => {
+                        root.duplicate(root.data.id);
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                TextButton {
+                    text: "タスクを削除";
+                    text-color: Theme.high;
+                    hover-color: Theme.high;
+                    underline-on-hover: true;
+                    clicked => {
+                        root.delete(root.data.id);
+                    }
+                }
+            }
+        }
+    }
+}

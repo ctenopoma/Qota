@@ -1,0 +1,557 @@
+// Tailwind で組んでいた小さな部品を Slint で作り直したもの。
+import { Theme, Bridge } from "theme.slint";
+import { CalendarDay } from "types.slint";
+
+// チェックボックス (w-3.5 h-3.5 rounded-sm border)
+export component Check inherits Rectangle {
+    in property <bool> checked;
+    in property <length> size: 14px;
+    callback toggled();
+
+    width: root.size;
+    height: root.size;
+    border-radius: 2px;
+    border-width: 1px;
+    border-color: root.checked ? Theme.accent : (ta.has-hover ? Theme.ink : Theme.mute);
+    background: root.checked ? Theme.accent : transparent;
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.toggled();
+        }
+    }
+}
+
+// 取り消し線・下線を引けるテキスト（Slint の Text には text-decoration が無い）
+export component Label inherits Rectangle {
+    in property <string> text;
+    in property <color> text-color: Theme.ink;
+    in property <length> font-size: Theme.fs-sm;
+    in property <int> font-weight: 400;
+    in property <bool> mono;
+    // 記号 (▶ ⧉ など) は Segoe UI Emoji に落ちて絵文字になるので、明示的に記号フォントを指定する
+    in property <string> family;
+    in property <bool> strike;
+    in property <bool> underline;
+    in property <length> letter-spacing;
+    in property <TextHorizontalAlignment> align: left;
+    // CSS の line-height 相当。text-sm の中の text-2xs は 20px を受け継いでいる
+    in property <length> line-height;
+
+    min-width: 0;
+    preferred-width: t.preferred-width;
+    min-height: max(t.preferred-height, root.line-height);
+    horizontal-stretch: 0;
+
+    t := Text {
+        width: 100%;
+        height: 100%;
+        text: root.text;
+        color: root.text-color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.family != "" ? root.family : root.mono ? Theme.mono : Theme.sans;
+        letter-spacing: root.letter-spacing;
+        horizontal-alignment: root.align;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Rectangle {
+        visible: root.strike;
+        x: 0;
+        y: root.height / 2;
+        width: min(t.preferred-width, root.width);
+        height: 1px;
+        background: root.text-color;
+    }
+
+    Rectangle {
+        visible: root.underline;
+        x: 0;
+        y: (root.height + root.font-size) / 2;
+        width: min(t.preferred-width, root.width);
+        height: 1px;
+        background: root.text-color;
+    }
+}
+
+// テキストだけのボタン。bordered で枠付き（px-1.5 py-0.5 rounded border）
+export component TextButton inherits Rectangle {
+    in property <string> text;
+    in property <color> text-color: Theme.mute;
+    in property <color> hover-color: Theme.ink;
+    in property <length> font-size: Theme.fs-2xs;
+    in property <bool> mono: true;
+    in property <string> family;
+    in property <int> font-weight: 400;
+    in property <bool> bordered;
+    in property <bool> underline-on-hover;
+    in property <length> line-height: 20px;
+    in property <length> pad-x: root.bordered ? 6px : 0px;
+    in property <length> pad-y: root.bordered ? 2px : 0px;
+    out property <bool> hovered: ta.has-hover;
+    callback clicked();
+
+    border-radius: 4px;
+    border-width: root.bordered ? 1px : 0px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding-left: root.pad-x;
+        padding-right: root.pad-x;
+        padding-top: root.pad-y;
+        padding-bottom: root.pad-y;
+        Label {
+            text: root.text;
+            text-color: ta.has-hover ? root.hover-color : root.text-color;
+            font-size: root.font-size;
+            mono: root.mono;
+            family: root.family;
+            font-weight: root.font-weight;
+            line-height: root.line-height;
+            underline: root.underline-on-hover && ta.has-hover;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// 1 行入力。IME の変換中 (preedit-text) はプレースホルダを出さない
+export component Input inherits Rectangle {
+    in-out property <string> text <=> ti.text;
+    in property <string> placeholder;
+    in property <length> font-size: Theme.fs-sm;
+    in property <int> font-weight: 400;
+    in property <bool> bordered;
+    in property <bool> mono;
+    out property <bool> has-focus: ti.has-focus;
+    // IME の変換中の文字列（確定前）。変換中はショートカットを横取りしないために使う
+    out property <string> preedit-text: ti.preedit-text;
+    callback accepted(text: string);
+    callback edited(text: string);
+    callback focus-out(text: string);
+
+    forward-focus: ti;
+
+    border-radius: 4px;
+    border-width: root.bordered ? 1px : 0px;
+    border-color: ti.has-focus ? Theme.mute : Theme.border;
+    min-height: root.font-size * 1.5 + (root.bordered ? 8px : 0px);
+
+    HorizontalLayout {
+        padding-left: root.bordered ? 8px : 0px;
+        padding-right: root.bordered ? 8px : 0px;
+        padding-top: root.bordered ? 4px : 0px;
+        padding-bottom: root.bordered ? 4px : 0px;
+
+        Rectangle {
+            // 空の入力欄での Ctrl+Z / Ctrl+Y は、文字の取り消しではなくアプリの操作の取り消しに回す。
+            // タスクを追加した直後は新規入力欄にフォーカスが残るので、こうしないと追加を取り消せない
+            FocusScope {
+                width: 100%;
+                height: 100%;
+                focus-on-click: false;
+                focus-on-tab-navigation: false;
+                capture-key-pressed(event) => {
+                    if ti.text == "" && ti.preedit-text == "" && event.modifiers.control {
+                        if event.text == "y" || event.text == "Y" || ((event.text == "z" || event.text == "Z") && event.modifiers.shift) {
+                            Bridge.redo();
+                            return accept;
+                        }
+                        if event.text == "z" || event.text == "Z" {
+                            Bridge.undo();
+                            return accept;
+                        }
+                    }
+                    reject
+                }
+
+            ti := TextInput {
+                width: 100%;
+                height: 100%;
+                single-line: true;
+                vertical-alignment: center;
+                font-size: root.font-size;
+                font-weight: root.font-weight;
+                font-family: root.mono ? Theme.mono : Theme.sans;
+                color: Theme.ink;
+                selection-background-color: Theme.accent.with-alpha(0.35);
+                selection-foreground-color: Theme.ink;
+                accepted => {
+                    root.accepted(self.text);
+                }
+                edited => {
+                    root.edited(self.text);
+                }
+                changed has-focus => {
+                    if !self.has-focus {
+                        root.focus-out(self.text);
+                    }
+                }
+            }
+            }
+
+            Text {
+                x: 0;
+                width: 100%;
+                height: 100%;
+                visible: ti.text == "" && ti.preedit-text == "";
+                text: root.placeholder;
+                color: Theme.faint;
+                font-size: root.font-size;
+                font-family: root.mono ? Theme.mono : Theme.sans;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+// 複数行入力 (textarea rows=4)
+export component TextArea inherits Rectangle {
+    in-out property <string> text <=> ti.text;
+    in property <string> placeholder;
+    callback edited(text: string);
+    callback focus-out(text: string);
+
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: ti.has-focus ? Theme.mute : Theme.border;
+    min-height: 96px;
+
+    ti := TextInput {
+        x: 8px;
+        y: 8px;
+        width: root.width - 16px;
+        height: root.height - 16px;
+        single-line: false;
+        wrap: word-wrap;
+        font-size: Theme.fs-sm;
+        font-family: Theme.sans;
+        color: Theme.ink;
+        selection-background-color: Theme.accent.with-alpha(0.35);
+        selection-foreground-color: Theme.ink;
+        edited => {
+            root.edited(self.text);
+        }
+        changed has-focus => {
+            if !self.has-focus {
+                root.focus-out(self.text);
+            }
+        }
+    }
+
+    Text {
+        x: 8px;
+        y: 8px;
+        visible: ti.text == "" && ti.preedit-text == "";
+        text: root.placeholder;
+        color: Theme.faint;
+        font-size: Theme.fs-sm;
+        font-family: Theme.sans;
+    }
+}
+
+// <select> の代わり。ネイティブではなく自前のポップアップで出す
+export component Select inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current-index;
+    callback selected(index: int);
+
+    height: 22px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: ta.has-hover ? Theme.mute : Theme.border;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 4px;
+        Label {
+            horizontal-stretch: 1;
+            text: root.options[root.current-index];
+            font-size: Theme.fs-2xs;
+            mono: true;
+        }
+        Label {
+            text: "▾";
+            family: Theme.symbol;
+            text-color: Theme.mute;
+            font-size: Theme.fs-2xs;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            popup.show();
+        }
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 2px;
+        width: root.width;
+        height: root.options.length * 22px + 6px;
+
+        Rectangle {
+            background: Theme.panel2;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000066;
+
+            VerticalLayout {
+                padding: 2px;
+                for opt[i] in root.options: Rectangle {
+                    height: 22px;
+                    border-radius: 2px;
+                    background: ota.has-hover ? Theme.panel : transparent;
+                    Label {
+                        x: 6px;
+                        width: parent.width - 12px;
+                        text: opt;
+                        font-size: Theme.fs-2xs;
+                        mono: true;
+                        text-color: i == root.current-index ? Theme.accent : Theme.ink;
+                    }
+
+                    ota := TouchArea {
+                        clicked => {
+                            root.selected(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// <input type="date"> のピッカー（WebView2 の ja-JP 表示）に合わせた日付選択。
+// 日付をクリックすると即確定、「今日」で今日を選び、「削除」で未設定に戻す。
+export component DatePopup inherits PopupWindow {
+    // 選択中の日付。year == 0 なら未設定
+    in property <int> year;
+    in property <int> month;
+    in property <int> day;
+    in property <bool> monday-first;
+    callback picked(year: int, month: int, day: int);
+    callback cleared();
+
+    property <int> view-year: root.year > 0 ? root.year : Bridge.today-year;
+    property <int> view-month: root.year > 0 ? root.month : Bridge.today-month;
+    property <[CalendarDay]> days: Bridge.month-days(root.view-year, root.view-month, root.monday-first);
+    property <length> cell: 30px;
+
+    function shift(delta: int) {
+        if delta < 0 {
+            if root.view-month == 1 {
+                root.view-month = 12;
+                root.view-year -= 1;
+            } else {
+                root.view-month -= 1;
+            }
+        } else {
+            if root.view-month == 12 {
+                root.view-month = 1;
+                root.view-year += 1;
+            } else {
+                root.view-month += 1;
+            }
+        }
+    }
+
+    close-policy: PopupClosePolicy.close-on-click-outside;
+    width: 7 * root.cell + 16px;
+    height: frame.preferred-height;
+
+    frame := Rectangle {
+        background: Theme.panel2;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 16px;
+        drop-shadow-offset-y: 4px;
+        drop-shadow-color: #00000066;
+
+        VerticalLayout {
+            padding: 8px;
+            spacing: 4px;
+
+            HorizontalLayout {
+                padding-left: 4px;
+                spacing: 4px;
+                Label {
+                    horizontal-stretch: 1;
+                    text: root.view-year + "年" + root.view-month + "月";
+                    font-weight: 600;
+                    line-height: 26px;
+                }
+
+                TextButton {
+                    text: "‹";
+                    family: Theme.symbol;
+                    font-size: Theme.fs-base;
+                    bordered: true;
+                    clicked => {
+                        root.shift(-1);
+                    }
+                }
+
+                TextButton {
+                    text: "›";
+                    family: Theme.symbol;
+                    font-size: Theme.fs-base;
+                    bordered: true;
+                    clicked => {
+                        root.shift(1);
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                for w in (root.monday-first ? ["月", "火", "水", "木", "金", "土", "日"] : ["日", "月", "火", "水", "木", "金", "土"]): Label {
+                    width: root.cell;
+                    text: w;
+                    text-color: Theme.mute;
+                    font-size: Theme.fs-2xs;
+                    align: center;
+                    line-height: 22px;
+                }
+            }
+
+            Rectangle {
+                height: root.days.length / 7 * root.cell;
+                for d[i] in root.days: Rectangle {
+                    property <bool> selected: d.year == root.year && d.month == root.month && d.day == root.day;
+
+                    x: mod(i, 7) * root.cell;
+                    y: floor(i / 7) * root.cell;
+                    width: root.cell;
+                    height: root.cell;
+
+                    Rectangle {
+                        x: 2px;
+                        y: 2px;
+                        width: parent.width - 4px;
+                        height: parent.height - 4px;
+                        border-radius: 4px;
+                        background: parent.selected ? Theme.accent : (cta.has-hover ? Theme.panel : transparent);
+                        // 今日の印は Bridge と比べる（開いたまま日付が変わっても追従する）
+                        border-width: d.year == Bridge.today-year && d.month == Bridge.today-month && d.day == Bridge.today-day && !parent.selected ? 1px : 0px;
+                        border-color: Theme.accent;
+                    }
+
+                    Label {
+                        width: 100%;
+                        height: 100%;
+                        text: d.day;
+                        font-size: Theme.fs-xs;
+                        align: center;
+                        text-color: parent.selected ? Theme.bg : (d.in-month ? Theme.ink : Theme.faint);
+                    }
+
+                    cta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.picked(d.year, d.month, d.day);
+                            root.close();
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-top: 4px;
+                TextButton {
+                    text: "削除";
+                    mono: false;
+                    bordered: true;
+                    clicked => {
+                        root.cleared();
+                        root.close();
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                TextButton {
+                    text: "今日";
+                    mono: false;
+                    bordered: true;
+                    clicked => {
+                        root.picked(Bridge.today-year, Bridge.today-month, Bridge.today-day);
+                        root.close();
+                    }
+                }
+            }
+        }
+    }
+}
+
+// <input type="date"> の代わり。クリックで DatePopup を開く
+export component DateButton inherits Rectangle {
+    in property <string> label;
+    in property <color> text-color: Theme.mute;
+    in property <bool> bordered;
+    in property <TextHorizontalAlignment> align: left;
+    // 選択中の日付。year == 0 なら未設定（ピッカーは今月を開く）
+    in property <int> year;
+    in property <int> month;
+    in property <int> day;
+    callback picked(year: int, month: int, day: int);
+    callback cleared();
+
+    height: 22px;
+    border-radius: 4px;
+    border-width: root.bordered ? 1px : 0px;
+    border-color: ta.has-hover ? Theme.mute : Theme.border;
+
+    HorizontalLayout {
+        padding-left: root.bordered ? 6px : 0px;
+        padding-right: root.bordered ? 6px : 0px;
+        Label {
+            horizontal-stretch: 1;
+            text: root.label;
+            text-color: root.text-color;
+            font-size: Theme.fs-2xs;
+            mono: true;
+            align: root.align;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            popup.show();
+        }
+    }
+
+    popup := DatePopup {
+        x: root.width - self.width;
+        y: root.height + 2px;
+        year: root.year;
+        month: root.month;
+        day: root.day;
+        picked(y, m, d) => {
+            root.picked(y, m, d);
+        }
+        cleared => {
+            root.cleared();
+        }
+    }
+}
+
+export component HLine inherits Rectangle {
+    height: 1px;
+    background: Theme.border;
+}

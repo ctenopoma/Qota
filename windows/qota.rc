@@ -1,0 +1,4 @@
+// exe のアイコンとマニフェスト。build.rs から embed-resource で埋め込む
+#define RT_MANIFEST 24
+1 ICON "../assets/icon.ico"
+1 RT_MANIFEST "qota.exe.manifest"

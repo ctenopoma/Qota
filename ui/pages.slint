@@ -1,0 +1,395 @@
+// 旧 Tauri 版の src/pages/Settings.tsx / src/components/CommandPalette.tsx の移植
+import { ScrollView, AboutSlint } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Label, TextButton, Input, HLine } from "widgets.slint";
+import { Command } from "types.slint";
+
+component Card inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    // 説明の 2 行目以降。折り返し (wrap) の Text を使うと ScrollView が開いた直後に一番下までスクロールしてしまうので、行を分けて渡す
+    in property <[string]> lines;
+
+    max-width: 512px;
+    background: Theme.panel;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 4px;
+        Label {
+            text: root.title;
+            font-weight: 500;
+        }
+
+        Label {
+            text: root.description;
+            text-color: Theme.mute;
+            font-size: Theme.fs-2xs;
+        }
+
+        for line in root.lines: Label {
+            text: line;
+            text-color: Theme.mute;
+            font-size: Theme.fs-2xs;
+        }
+
+        HorizontalLayout {
+            padding-top: 8px;
+            spacing: 6px;
+            alignment: start;
+            @children
+        }
+    }
+}
+
+component SettingsButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    in property <bool> danger;
+    callback clicked();
+
+    border-radius: 4px;
+    background: root.danger ? (ta.has-hover ? Theme.high.darker(0.15) : Theme.high) : root.primary ? Theme.accent : Theme.bg;
+    border-width: root.primary || root.danger ? 0px : 1px;
+    border-color: ta.has-hover ? Theme.mute : Theme.border;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        Label {
+            text: root.text;
+            text-color: root.primary || root.danger ? Theme.bg : Theme.ink;
+            font-size: Theme.fs-2xs;
+            font-weight: root.primary || root.danger ? 600 : 400;
+            mono: true;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component SettingsPage inherits Rectangle {
+    in property <bool> dark;
+    in property <string> data-path;
+    // いちばん新しいバックアップの日付。無ければ空
+    in property <string> latest-backup;
+    callback set-dark(dark: bool);
+    callback export-json();
+    callback import-json();
+    callback restore-backup();
+    callback open-backups();
+    callback reset();
+
+    sv := ScrollView {
+        content-width: self.visible-width;
+        content-height: max(self.visible-height, body.preferred-height);
+
+        body := VerticalLayout {
+            width: sv.visible-width;
+            alignment: start;
+            padding: 24px;
+            spacing: 12px;
+
+            Label {
+                text: "設定";
+                font-size: Theme.fs-base;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                height: 8px;
+            }
+
+            Card {
+                title: "表示モード";
+                description: "ライト・ダークの切り替え";
+                SettingsButton {
+                    text: "● ダーク";
+                    primary: root.dark;
+                    clicked => {
+                        root.set-dark(true);
+                    }
+                }
+
+                SettingsButton {
+                    text: "○ ライト";
+                    primary: !root.dark;
+                    clicked => {
+                        root.set-dark(false);
+                    }
+                }
+            }
+
+            Card {
+                title: "データのエクスポート";
+                description: "すべてのタスク・プロジェクト・タグを JSON で出力します";
+                SettingsButton {
+                    text: "JSON を保存…";
+                    clicked => {
+                        root.export-json();
+                    }
+                }
+            }
+
+            Card {
+                title: "データのインポート";
+                description: "エクスポートした JSON を読み込んで取り込みます";
+                lines: ["今のデータは置き換わります（直後なら元に戻せます）"];
+                SettingsButton {
+                    text: "JSON を選択…";
+                    clicked => {
+                        root.import-json();
+                    }
+                }
+            }
+
+            Card {
+                title: "バックアップ";
+                description: "データを変更した日ごとに、その日最初の変更の直前の状態を残します";
+                lines: [
+                    "直近 7 日分（使わなかった日は作りません）。インポートとリセットの直前にも残します",
+                    root.latest-backup != "" ? "最新: " + root.latest-backup : "まだありません",
+                ];
+                SettingsButton {
+                    text: "バックアップから戻す…";
+                    clicked => {
+                        root.restore-backup();
+                    }
+                }
+
+                SettingsButton {
+                    text: "フォルダを開く";
+                    clicked => {
+                        root.open-backups();
+                    }
+                }
+            }
+
+            Card {
+                title: "サンプルデータに戻す";
+                description: "すべてのデータを破棄して、初期サンプルに戻します";
+                SettingsButton {
+                    text: "リセット";
+                    clicked => {
+                        root.reset();
+                    }
+                }
+            }
+
+            // Slint の Royalty-free ライセンスで必要な表示
+            Card {
+                title: "このアプリについて";
+                description: "Qota — データ: " + root.data-path;
+                AboutSlint {
+                    preferred-height: 120px;
+                }
+            }
+
+        }
+    }
+}
+
+export component CommandPalette inherits Rectangle {
+    in property <[Command]> items;
+    in-out property <int> index;
+    callback query-changed(q: string);
+    callback run(index: int);
+    callback close();
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    background: #00000066;
+    TouchArea {
+        clicked => {
+            root.close();
+        }
+    }
+
+    box := Rectangle {
+        x: (root.width - self.width) / 2;
+        y: root.height * 0.2;
+        width: 480px;
+        height: box-layout.preferred-height;
+        background: Theme.panel;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-offset-y: 16px;
+        drop-shadow-color: #00000080;
+
+        TouchArea { }
+
+        box-layout := VerticalLayout {
+            // ↑↓ / Enter は入力欄より先に拾う
+            FocusScope {
+                capture-key-pressed(event) => {
+                    // IME の変換中の Enter / 矢印は変換操作なので横取りしない
+                    if input.preedit-text != "" {
+                        return reject;
+                    }
+                    if event.text == Key.DownArrow {
+                        root.index = min(root.items.length - 1, root.index + 1);
+                        return accept;
+                    }
+                    if event.text == Key.UpArrow {
+                        root.index = max(0, root.index - 1);
+                        return accept;
+                    }
+                    if event.text == Key.Return {
+                        root.run(root.index);
+                        return accept;
+                    }
+                    reject
+                }
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    input := Input {
+                        placeholder: "コマンドを検索…";
+                        edited(text) => {
+                            root.index = 0;
+                            root.query-changed(text);
+                        }
+                    }
+                }
+            }
+
+            HLine { }
+
+            VerticalLayout {
+                padding-top: 4px;
+                padding-bottom: 4px;
+                for it[i] in root.items: Rectangle {
+                    background: i == root.index ? Theme.panel2 : transparent;
+                    ita := TouchArea {
+                        mouse-cursor: pointer;
+                        changed has-hover => {
+                            if self.has-hover {
+                                root.index = i;
+                            }
+                        }
+                        clicked => {
+                            root.run(i);
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        padding-top: 6px;
+                        padding-bottom: 6px;
+                        Label {
+                            horizontal-stretch: 1;
+                            text: it.label;
+                            family: Theme.symbol;
+                        }
+
+                        Label {
+                            text: it.sub;
+                            text-color: Theme.faint;
+                            font-size: Theme.fs-2xs;
+                            mono: true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// window.confirm() の代わり。OS のメッセージボックス（クラシック表示になる）ではなく、テーマに合わせて描く。
+// Enter で実行、Esc / 背景クリックで取り消し。
+export component ConfirmDialog inherits Rectangle {
+    in property <string> message;
+    in property <string> ok-label: "OK";
+    callback answered(ok: bool);
+
+    background: #00000066;
+    TouchArea {
+        clicked => {
+            root.answered(false);
+        }
+    }
+
+    FocusScope {
+        width: 100%;
+        height: 100%;
+        init => {
+            self.focus();
+        }
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.answered(false);
+                return accept;
+            }
+            if event.text == Key.Return {
+                root.answered(true);
+                return accept;
+            }
+            reject
+        }
+
+        box := Rectangle {
+            x: (root.width - self.width) / 2;
+            y: root.height * 0.3;
+            width: 380px;
+            height: box-layout.preferred-height;
+            background: Theme.panel;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-offset-y: 16px;
+            drop-shadow-color: #00000080;
+
+            TouchArea { }
+
+            box-layout := VerticalLayout {
+                padding: 20px;
+                spacing: 20px;
+                Text {
+                    text: root.message;
+                    color: Theme.ink;
+                    font-size: Theme.fs-sm;
+                    font-family: Theme.sans;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    SettingsButton {
+                        text: "キャンセル";
+                        clicked => {
+                            root.answered(false);
+                        }
+                    }
+
+                    SettingsButton {
+                        text: root.ok-label;
+                        danger: true;
+                        clicked => {
+                            root.answered(true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,178 +1,108 @@
-<div align="center">
-
-<img src="src-tauri/icons/icon.png" alt="Qota Logo" width="80" height="80" />
-
 # Qota
 
-**シンプルで高速なローカル専用タスク管理アプリ**
+ローカル専用のタスク管理アプリ。データはすべて手元の JSON ファイルに保存し、ネットワークには接続しない。
+Rust + [Slint](https://slint.dev/) で作っている（2026-10 に Tauri (WebView2) 版から移行。移行前のコードはコミット `8d92187` まで）。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tauri](https://img.shields.io/badge/Tauri-v2-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Rust](https://img.shields.io/badge/Rust-stable-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org)
+## 機能
 
-[インストール](#インストール) · [使い方](#使い方) · [開発環境のセットアップ](#開発環境のセットアップ) · [ドキュメント](#ドキュメント)
+- 今日 / 受信箱 / 今後（カンバン）/ カレンダー / プロジェクト別の一覧
+- タスク詳細: 優先度・期日・繰り返し・プロジェクト・タグ・メモ・サブタスク（ドラッグで並び替え）
+- プロジェクト一覧（色・名前の編集、サイドバーでドラッグして並び替え）、タグ
+- コマンドパレット (Ctrl+K)、検索 (Ctrl+/)、期限切れ・今日の通知
+- Ctrl+Z / Ctrl+Y で操作の取り消し・やり直し、マウスの戻る・進むボタン（Alt+← / Alt+→）で画面の行き来
+- ライト / ダーク、JSON のエクスポート / インポート、毎日の自動バックアップ
 
-</div>
+## ビルド・実行
 
----
+Rust (stable, MSVC) が必要。
 
-## ✨ 概要
-
-**Qota** は、データをすべてローカルに保存するプライバシーファーストなタスク管理アプリです。クラウドへの接続は一切不要。あなたのタスクはあなたのマシン上だけに存在します。
-
-Tauri v2 を採用しており、Rust バックエンドが高速・安全なデータ処理を担い、React + TypeScript のフロントエンドが快適な UI を提供します。
-
-## 🚀 主な機能
-
-| 機能 | 説明 |
-|------|------|
-| 📥 **受信箱 / 今日 / 今後** | GTD ワークフローに対応したビュー切り替え |
-| 📋 **カンバンボード** | ドラッグ&ドロップでタスクを管理 |
-| 🗂️ **プロジェクト管理** | タスクをプロジェクトにまとめて整理 |
-| 🏷️ **タグ** | 柔軟なタグでクロスカテゴリ整理 |
-| ⌨️ **コマンドパレット** | `Cmd/Ctrl+K` で素早くアクション実行 |
-| 🔍 **全文検索** | `Cmd/Ctrl+/` でタスクを即座に検索 |
-| 🌙 **ダーク / ライトモード** | 目に優しいテーマ切り替え |
-| 🎨 **アクセントカラー** | 4 種類のカラーテーマから選択 |
-| 📤 **JSON エクスポート / インポート** | データの可搬性を保証 |
-| 🔒 **完全ローカル** | インターネット不要、プライバシー完全保護 |
-
-### タスクの詳細機能
-
-- ✅ サブタスク（ネスト対応）
-- 🔴 優先度設定（高 / 中 / 低）
-- 📅 期日・期限管理
-- 📝 Markdown メモ
-- 🏷️ 複数タグ付け
-
-## 📦 インストール
-
-### リリースビルドから（推奨）
-
-> **Note**
-> 現在 v0.1.0 開発中。リリースが利用可能になり次第ここに掲載します。
-
-### ソースからビルド
-
-[開発環境のセットアップ](#開発環境のセットアップ) を参照してください。
-
-## 🖥️ 使い方
-
-起動するとサイドバーから各ビューに切り替えできます。
-
-```
-受信箱     — 未分類の全タスク
-今日       — 今日期限または「今日」フラグのタスク
-今後       — カンバンボード（Todo / In Progress / Done）
-プロジェクト — プロジェクト別タスク一覧
-タグ       — タグ別タスク一覧
-設定       — テーマ・アクセントカラー・データ管理
+```powershell
+cargo run --release
+cargo test --release
 ```
 
-**ショートカット一覧**
+実行ファイルは `target\release\qota.exe`。
 
-| キー | アクション |
-|------|-----------|
-| `Ctrl/Cmd + K` | コマンドパレットを開く |
-| `Ctrl/Cmd + /` | タスク検索 |
-| `Esc` | モーダル / パレットを閉じる |
-| `N` | 新規タスク作成（リスト表示時） |
+データは `%APPDATA%\com.example.qota.slint\qota.json`。初回だけ Tauri 版の `%APPDATA%\com.example.qota\qota.json` をコピーしてくる（元ファイルは書き換えない）。別の場所を使うときは `QOTA_DATA_DIR` を指定する。同じフォルダに `backups\`（自動バックアップ）、`window.json`（ウィンドウの大きさ）、`ui-state.json`（サイドバーなどの開閉）、`qota.lock`（二重起動の防止）を置く。
 
-## 🛠️ 開発環境のセットアップ
+開発用に `QOTA_OPEN=detail|palette|settings|upcoming|calendar|projects|tags|search|notif|confirm|toast` で起動直後にその画面を開ける。`QOTA_STEPS="click:x,y;drag:x1,y1,x2,y2;type:abc;ctrl:z;alt:left;esc;enter;close"` を付けると、起動 5 秒後から 1 秒おきにその操作をウィンドウへ直接送る（実際のマウス・キーボードは使わない。動作確認用）。
 
-### 必要なツール
+## 構成
 
-- **Node.js** 20 以上
-- **npm** または **pnpm**
-- **Rust** (最新 stable) — [rustup](https://rustup.rs/) でインストール
-- **MSVC ビルドツール** (Windows のみ) — Visual Studio Build Tools 2022
-- **Tauri CLI** v2
+| パス | 中身 | 移行前の Tauri 版の対応箇所 |
+|---|---|---|
+| `src/models.rs` `store.rs` `seed.rs` `error.rs` | データ型と JSON 永続化、バックアップ | `src-tauri/src/` をほぼそのまま（時間計測フィールドを削除） |
+| `src/commands/` | 操作。`State<'_, AppState>` → `&AppState` | `src-tauri/src/commands/`（ダイアログは `rfd`） |
+| `src/view.rs` | 表示用の値づくり、フィルタ・並び替え、oklch→sRGB | `src/lib/date.ts`、各ページのフィルタ |
+| `src/main.rs` | UI とコマンドのつなぎ込み | `src/store/useTaskStore.ts` |
+| `src/history.rs` | 取り消し・やり直し、画面の戻る・進む | （新規） |
+| `src/instance.rs` | 二重起動の防止 | （新規） |
+| `src/window_state.rs` | ウィンドウの大きさ・開閉状態の記憶 | （新規） |
+| `ui/theme.slint` | デザイントークン（oklch を hex に変換済み） | `src/index.css` / `tailwind.config.js` |
+| `ui/*.slint` | 画面 | `src/components/` `src/pages/` |
+| `windows/` `assets/` | exe に埋め込むマニフェストとアイコン | `src-tauri/icons/` |
 
-```bash
-# Tauri CLI のインストール
-cargo install tauri-cli --version "^2.0.0"
-```
+## Tauri 版からの移行
 
-### クイックスタート
+- 画面と機能は Tauri 版をそのまま移した。時間計測（見積もり・実績・タイマー）とインサイト画面は持ち込んでいない
+- プロジェクト・タグ・タスクの削除は確認ダイアログを出さず「元に戻す」付きのトーストにした（データのリセットだけ確認する）
+- カレンダーの日付の一覧は、元アプリの backdrop-blur の代わりに半透明の背景で覆う
 
-```bash
-# 1. リポジトリのクローン
-git clone https://github.com/your-username/qota.git
-cd qota
+### メモリ（Windows 11、200% 表示、同じデータ、起動 10 秒後の子プロセス込み合計）
 
-# 2. フロントエンド依存のインストール
-npm install
+| | プロセス数 | Working Set 合計 | Private 合計 |
+|---|---|---|---|
+| Tauri 版 (WebView2) | 7 | 376〜426 MB | 204〜268 MB |
+| Slint 版 (OpenGL / femtovg) | 1 | 104 MB | 128 MB |
+| Slint 版 (ソフトウェアレンダラ, 採用) | 1 | 42 MB | 22 MB |
 
-# 3. 開発サーバー起動（Tauri ウィンドウ）
-npm run tauri dev
-```
+計測は一覧を表示しただけの状態。負荷をかけたときのピークは未計測。
 
-> **Note**
-> フロントエンドのみ確認したい場合は `npm run dev`（http://localhost:1420）。
-> ただし Rust バックエンドへの IPC が呼べないため、データ読み込みは動作しません。
+### Slint で注意したこと
 
-### ビルド
+- 日本語表示: システムフォントへのフォールバックで問題なし。ただし `▶ ⧉ ▸` などの記号は Segoe UI Emoji に落ちて絵文字になる・欠けるので、`Theme.symbol` (Segoe UI Symbol) を明示している
+- Slint の `Text` には取り消し線・下線が無いので `Label` で線を重ねて描いている
+- `Rectangle` には非推奨の `color` プロパティが残っているので、自作部品の文字色は `text-color`、点の色は `dot-color` と呼ぶ
+- 確認ダイアログ: rfd の MessageDialog (Win32 MessageBox) はマニフェスト無しだとクラシック表示になるので、アプリ内の `ConfirmDialog` に置き換えた。ファイルダイアログ用に `windows/qota.exe.manifest`（Common Controls v6）とアイコンを exe に埋め込んでいる
+- 日付ピッカー: 標準の `DatePickerPopup` は英語表記で「今日」が無いので、WebView2 の日付入力に合わせた `DatePopup` を自作した
+- 設定画面の説明で折り返し (wrap) の Text を使うと、ScrollView が開いた直後に一番下までスクロールしてしまうので、行を分けて Label で出している
+- ライセンス: Royalty-free ライセンスの条件として設定画面に `AboutSlint` を置いている（配布ページにも Slint のバッジが要る）
 
-```bash
-# プロダクションビルド（Windows: MSI / NSIS インストーラを生成）
-npm run tauri build
-```
+## UX 改善（第 1 弾）
 
-> **Warning**
-> Windows では PowerShell の実行ポリシーを変更する必要がある場合があります。
-> ```powershell
-> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-> ```
+提案を UX・技術の 2 観点でレビューしてから実装した。
 
-## 📁 プロジェクト構成
+- 詳細パネルの入力中の内容（タイトル・メモ・サブタスク名）を、Esc・背景クリック・×・別のサブタスクへの移動・ウィンドウの × のどれで閉じても保存する。入力は Rust 側に下書きとして持ち、閉じるときに値が変わったものだけ書く（打鍵ごとに保存すると繰り返しの将来分が作り直されるため）
+- 起動時のウィンドウを作業領域に収めて中央に置き、前回の大きさと最大化を `window.json` に残す（qota.json のスキーマは変えない）
+- 画面下部のトースト。エラー・エクスポート結果などをどの画面でも出す
+- タスクの削除は確認なしで即実行し、トーストの「元に戻す」で戻せる。完了にしたときも同じ（今日ビューでは期限切れを完了にすると一覧から消えるため）。ほかの変更をした時点で「元に戻す」は使えなくなる
+- 今日ビューで追加したタスクの期日を今日にする
+- コマンドパレットは IME の変換中は Enter・矢印を横取りしない
 
-```
-Qota/
-├── src/                        # フロントエンド (React + TypeScript)
-│   ├── components/             # 再利用可能 UI コンポーネント
-│   ├── pages/                  # 各画面のページコンポーネント
-│   ├── store/                  # Zustand グローバルステート
-│   ├── lib/                    # ユーティリティ関数
-│   ├── types.ts                # 共通型定義
-│   ├── App.tsx                 # ルートコンポーネント
-│   └── main.tsx                # エントリポイント
-├── src-tauri/                  # バックエンド (Rust)
-│   ├── src/
-│   │   ├── main.rs             # Tauri アプリエントリ
-│   │   ├── commands.rs         # IPC コマンドハンドラ
-│   │   ├── models.rs           # データモデル
-│   │   └── storage.rs          # JSON 永続化ロジック
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-├── docs/
-│   └── BACKEND.md              # Rust 実装の完全仕様書
-└── public/                     # 静的アセット
-```
+### 取り消し・戻る
 
-## 💾 データ保存先
+- Ctrl+Z で 1 つ前の操作を取り消し、Ctrl+Y（Ctrl+Shift+Z）でやり直す。操作の直前のデータを丸ごと最大 100 件積む（`src/history.rs`）。表示モードの切り替えは対象外。インポートとリセットも取り消せる
+- 入力欄に文字があるときの Ctrl+Z は、入力欄の文字の取り消しになる。入力欄が空のときはアプリの操作の取り消しに回すので、タスクを追加した直後でも Ctrl+Z で追加を取り消せる
+- トーストの「元に戻す」も同じ仕組み（直後に別の操作をするとボタンは消える）
+- マウスの戻る・進むボタンと Alt+← / Alt+→ で、前に見ていた画面へ移る。詳細パネル・コマンドパレット・検索・通知・日付の一覧が開いているときは、まずそれを閉じる
+- マウスの戻る・進むボタンは Slint では押した位置の部品に届くので、`unstable-winit-030` 機能の `on_winit_window_event` で部品より先に受け取っている。Slint を上げるときはこの API の変更に注意
 
-| OS | 保存パス |
-|----|---------|
-| Windows | `%APPDATA%\com.example.qota\qota.json` |
-| macOS | `~/Library/Application Support/com.example.qota/qota.json` |
-| Linux | `~/.local/share/com.example.qota/qota.json` |
+### データを守る仕組み・状態の記憶（第 2 弾）
 
-データはすべてローカルの JSON ファイルに保存されます。定期的に **設定 → エクスポート** でバックアップすることをおすすめします。
+UX・技術の 2 観点でレビューしてから実装した。
 
-## 📚 ドキュメント
+- 二重起動の防止: データフォルダの `qota.lock` を「ほかのプロセスは読むだけ」で開いたままにする。2 つ目の起動はウィンドウを出さずに、既存のウィンドウを前に出して終わる（最小化なら元に戻し、最大化は保つ）。データフォルダ単位なので `QOTA_DATA_DIR` で別のデータを指す起動とはぶつからない（`src/instance.rs`）
+- 自動バックアップ: その日最初の保存の直前に `backups\qota-YYYY-MM-DD.json` を残し、7 日分を保持する。「今日の分があるか」はファイルの有無で判断するので、同じ日に再起動しても朝の分を上書きしない。インポートとリセットの直前には日付に関係なく `qota-…-before-import.json` / `-before-reset.json` を残す。保存は一時ファイルをディスクへ書き出してから置き換える。設定画面の「バックアップから戻す…」はバックアップのフォルダでインポートを開く
+- 日付の更新: 1 分ごとに日付を確かめ、変わっていれば「今日」と期限切れの表示、日付ピッカーの今日の印を差し替える
+- サイドバーと「完了済み」の開閉を `ui-state.json` に残す（ウィンドウの大きさの `window.json` とは別ファイル）。起動時の画面はいつも「今日」
+- 取り消しの説明: 「「abc」の追加を取り消しました」「「abc」の期日の変更をやり直しました」のように、何を戻したかを出す。説明は操作の前のデータから作る。サブタスク・プロジェクト・タグの削除、プロジェクトの移動、インポート、リセットにも「元に戻す」付きのトーストを出す
 
-- [バックエンド仕様書](docs/BACKEND.md) — Rust 実装の詳細（データスキーマ・IPC コマンド・エラー型）
+次の候補: 今日ビューを「期限切れ」「今日」の見出しで分ける → 日付ピッカーに「明日」「来週月曜」→ キーボード操作（Ctrl+N、↑↓・Enter・Space・Delete。単キーの N や数字キーは IME と衝突するので使わない）
 
-## 🤝 コントリビュート
+## 手で確かめてほしいこと
 
-1. このリポジトリをフォーク
-2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. プルリクエストを作成
-
-## 📄 ライセンス
-
-[MIT License](LICENSE) © 2026 Qota Contributors
+- [ ] 日本語 IME: 新規タスク欄・詳細のタイトル・メモ・サブタスク追加で、変換中の表示と候補ウィンドウの位置
+- [ ] サブタスクとサイドバーのプロジェクトのドラッグ並び替え（挿入位置の緑の線、ドロップ後の順序が保存されること）
+- [ ] 期日・終了日の日付ピッカー、優先度・頻度・プロジェクトのセレクト
+- [ ] エクスポート / インポート / バックアップから戻すのファイルダイアログ、リセットの確認ダイアログ
+- [ ] プロジェクトの編集（✎ → 保存）、プロジェクト・タグの削除と「元に戻す」

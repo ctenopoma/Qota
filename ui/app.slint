@@ -1,0 +1,473 @@
+// 旧 Tauri 版 (コミット 8d92187 まで) の src/App.tsx の移植。ルーティング・オーバーレイ・グローバルショートカットを持つ。
+import { Palette } from "std-widgets.slint";
+import { Theme, Bridge } from "theme.slint";
+import { Label, TextButton } from "widgets.slint";
+import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell } from "types.slint";
+import { Sidebar } from "sidebar.slint";
+import { TaskTable } from "task-table.slint";
+import { TaskDetail } from "task-detail.slint";
+import { SettingsPage, CommandPalette, ConfirmDialog } from "pages.slint";
+import { UpcomingView, ProjectsView, TagsView, CalendarView, DayDialog, SearchPanel, NotifPanel } from "views.slint";
+
+export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell }
+
+export component AppWindow inherits Window {
+    title: "Qota";
+    icon: @image-url("../assets/128x128.png");
+    preferred-width: 1280px;
+    preferred-height: 820px;
+    min-width: 880px;
+    min-height: 600px;
+    background: Theme.bg;
+    default-font-family: Theme.sans;
+    default-font-size: Theme.fs-sm;
+
+    // ───── routing ─────
+    in-out property <string> view: "today";
+    in-out property <string> project-id;
+    in-out property <bool> sidebar-open: true;
+
+    // ───── list ─────
+    in property <string> list-title;
+    in property <string> list-subtitle;
+    in property <[TaskItem]> active-tasks;
+    in property <[TaskItem]> done-tasks;
+    in-out property <bool> archive-open;
+
+    // ───── sidebar ─────
+    in property <[NavProject]> projects;
+    in property <int> overdue-count;
+
+    // ───── detail ─────
+    in-out property <bool> detail-open;
+    in property <TaskDetailData> detail;
+    in property <[SubtaskItem]> detail-subtasks;
+    in property <[TagChip]> detail-tags;
+    in property <[string]> project-options;
+
+    // ───── palette / settings ─────
+    in-out property <bool> palette-open;
+    in property <[Command]> commands;
+    in-out property <int> palette-index;
+    // ───── toast ─────
+    // 画面下部の通知。toast-action があればボタンを出す（「元に戻す」など）
+    in property <string> toast-text;
+    in property <string> toast-action;
+    in property <bool> toast-error;
+    in property <string> data-path;
+
+    // ───── 今後・プロジェクト一覧・タグ（表示中の画面の列だけ入れる）─────
+    in property <[Column]> columns;
+
+    // ───── カレンダー ─────
+    in property <string> cal-title;
+    in property <bool> cal-monday-first;
+    in property <[CalCell]> cal-cells;
+    in-out property <bool> day-open;
+    in property <string> day-title;
+    in property <[TaskItem]> day-tasks;
+
+    // ───── 検索・通知 ─────
+    in-out property <bool> search-open;
+    in property <[TaskItem]> search-results;
+    in property <bool> search-has-query;
+    in-out property <bool> notif-open;
+    in property <[TaskItem]> notif-overdue;
+    in property <[TaskItem]> notif-today;
+
+    // ───── confirm ─────
+    in-out property <bool> confirm-open;
+    in property <string> confirm-message;
+    in property <string> confirm-ok-label;
+
+    callback navigate(view: string, project-id: string);
+    callback add-task(title: string);
+    callback add-project(name: string);
+    callback open-task(id: string);
+    callback toggle-task(id: string);
+    callback toggle-expanded(id: string);
+    callback set-priority(id: string, p: int);
+    callback set-due(id: string, y: int, m: int, d: int);
+    callback clear-due(id: string);
+    callback duplicate-task(id: string);
+    callback delete-task(id: string);
+    callback toggle-subtask(task-id: string, subtask-id: string);
+    callback update-title(id: string, title: string);
+    callback update-notes(id: string, notes: string);
+    callback toggle-status(id: string);
+    callback set-project(id: string, index: int);
+    callback set-repeating(id: string, on: bool);
+    callback set-interval(id: string, index: int);
+    callback set-recurrence-end(id: string, y: int, m: int, d: int);
+    callback clear-recurrence-end(id: string);
+    callback toggle-tag(id: string, tag-id: string);
+    callback add-subtask(id: string, title: string);
+    callback delete-subtask(id: string, subtask-id: string);
+    callback rename-subtask(id: string, subtask-id: string, title: string);
+    callback drop-subtask(id: string, subtask-id: string, slot: int);
+    callback palette-query(q: string);
+    callback palette-run(index: int);
+    callback set-dark(dark: bool);
+    callback export-json();
+    callback import-json();
+    callback reset-data();
+    callback restore-backup();
+    callback open-backups();
+    in property <string> latest-backup;
+    callback confirm-result(ok: bool);
+    callback toast-action-clicked();
+    callback draft-title(id: string, title: string);
+    callback draft-notes(id: string, notes: string);
+    callback draft-subtask(id: string, subtask-id: string, title: string);
+    // 詳細パネルで入力中の内容を保存する。閉じる前に必ず呼ぶ
+    callback commit-drafts();
+    callback cal-shift(delta: int);
+    callback cal-today();
+    callback open-day(year: int, month: int, day: int);
+    callback add-project-color(name: string, color: string);
+    callback update-project(id: string, name: string, color: string);
+    callback delete-project(id: string);
+    // サイドバーのドラッグ&ドロップ。slot は表示中（アーカイブ以外）の並びでの挿入位置
+    callback move-project(payload: string, slot: int);
+    callback add-tag(name: string);
+    callback delete-tag(id: string);
+    callback search-query(q: string);
+
+    // Rust からも呼ぶ（マウスの戻るボタンで、開いているパネルを閉じる）
+    public function close-overlays() {
+        // パネルを消すと入力欄のフォーカスアウトが呼ばれないので、先に確定させる
+        root.commit-drafts();
+        root.palette-open = false;
+        root.detail-open = false;
+        root.search-open = false;
+        root.notif-open = false;
+        root.day-open = false;
+        keys.focus();
+    }
+
+    function open-search() {
+        root.search-query("");
+        root.search-open = true;
+    }
+
+    function open-palette() {
+        root.palette-index = 0;
+        root.palette-query("");
+        root.palette-open = true;
+    }
+
+    // std-widgets (スクロールバー・日付ピッカー) の配色をテーマに合わせる
+    init => {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+    changed sidebar-open => {
+        keys.focus();
+    }
+
+    forward-focus: keys;
+
+    keys := FocusScope {
+        KeyBinding {
+            keys: @keys(Control + K);
+            activated => {
+                root.open-palette();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "/");
+            activated => {
+                root.open-search();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Escape);
+            activated => {
+                root.close-overlays();
+            }
+        }
+
+        // 操作の取り消し・やり直し。入力欄にフォーカスがあるときは入力欄が先に受け取る（文字の取り消し）
+        KeyBinding {
+            keys: @keys(Control + Z);
+            enabled: !root.confirm-open;
+            activated => {
+                Bridge.undo();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + Y);
+            enabled: !root.confirm-open;
+            activated => {
+                Bridge.redo();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + Shift + Z);
+            enabled: !root.confirm-open;
+            activated => {
+                Bridge.redo();
+            }
+        }
+
+        // ブラウザと同じ Alt+← / Alt+→ でも戻る・進む（マウスの戻る・進むボタンは Rust 側で拾う）
+        KeyBinding {
+            keys: @keys(Alt + LeftArrow);
+            activated => {
+                Bridge.nav-back();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Alt + RightArrow);
+            activated => {
+                Bridge.nav-forward();
+            }
+        }
+
+        HorizontalLayout {
+            Sidebar {
+                width: root.sidebar-open ? 220px : 60px;
+                open: root.sidebar-open;
+                view: root.view;
+                project-id: root.project-id;
+                projects: root.projects;
+                overdue-count: root.overdue-count;
+                navigate(v, p) => {
+                    root.navigate(v, p);
+                }
+                command => {
+                    root.open-palette();
+                }
+                toggle-open => {
+                    root.sidebar-open = !root.sidebar-open;
+                }
+                add-project(name) => {
+                    root.add-project(name);
+                }
+                search => {
+                    root.open-search();
+                }
+                notif => {
+                    root.notif-open = true;
+                }
+                move-project(payload, slot) => {
+                    root.move-project(payload, slot);
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+
+                if root.view == "today" || root.view == "inbox" || root.view == "project": TaskTable {
+                    title: root.list-title;
+                    subtitle: root.list-subtitle;
+                    active: root.active-tasks;
+                    done: root.done-tasks;
+                    archive-open <=> root.archive-open;
+                    add-task(t) => { root.add-task(t); }
+                    open(id) => { root.open-task(id); }
+                    toggle(id) => { root.toggle-task(id); }
+                    toggle-expanded(id) => { root.toggle-expanded(id); }
+                    set-priority(id, p) => { root.set-priority(id, p); }
+                    set-due(id, y, m, d) => { root.set-due(id, y, m, d); }
+                    clear-due(id) => { root.clear-due(id); }
+                    duplicate(id) => { root.duplicate-task(id); }
+                    delete(id) => { root.delete-task(id); }
+                    toggle-subtask(tid, sid) => { root.toggle-subtask(tid, sid); }
+                }
+
+                if root.view == "settings": SettingsPage {
+                    dark: Theme.dark;
+                    data-path: root.data-path;
+                    set-dark(d) => {
+                        root.set-dark(d);
+                        Palette.color-scheme = d ? ColorScheme.dark : ColorScheme.light;
+                    }
+                    export-json => { root.export-json(); }
+                    import-json => { root.import-json(); }
+                    latest-backup: root.latest-backup;
+                    restore-backup => { root.restore-backup(); }
+                    open-backups => { root.open-backups(); }
+                    reset => { root.reset-data(); }
+                }
+
+                if root.view == "upcoming": UpcomingView {
+                    columns: root.columns;
+                    open(id) => { root.open-task(id); }
+                    toggle(id) => { root.toggle-task(id); }
+                    toggle-expanded(id) => { root.toggle-expanded(id); }
+                    toggle-subtask(tid, sid) => { root.toggle-subtask(tid, sid); }
+                }
+
+                if root.view == "calendar": CalendarView {
+                    title: root.cal-title;
+                    monday-first: root.cal-monday-first;
+                    cells: root.cal-cells;
+                    shift(d) => { root.cal-shift(d); }
+                    go-today => { root.cal-today(); }
+                    open-day(y, m, d) => { root.open-day(y, m, d); }
+                    open(id) => { root.open-task(id); }
+                }
+
+                if root.view == "projects": ProjectsView {
+                    columns: root.columns;
+                    open(id) => { root.open-task(id); }
+                    open-project(id) => { root.navigate("project", id); }
+                    add-project(name, color) => { root.add-project-color(name, color); }
+                    update-project(id, name, color) => { root.update-project(id, name, color); }
+                    delete-project(id) => { root.delete-project(id); }
+                }
+
+                if root.view == "tags": TagsView {
+                    columns: root.columns;
+                    open(id) => { root.open-task(id); }
+                    add-tag(name) => { root.add-tag(name); }
+                    delete-tag(id) => { root.delete-tag(id); }
+                }
+
+                // 元アプリと同じく、カレンダーの範囲だけを覆う
+                if root.view == "calendar" && root.day-open: DayDialog {
+                    title: root.day-title;
+                    tasks: root.day-tasks;
+                    close => { root.day-open = false; }
+                    open(id) => {
+                        root.day-open = false;
+                        root.open-task(id);
+                    }
+                }
+            }
+        }
+
+        if root.detail-open: TaskDetail {
+            data: root.detail;
+            subtasks: root.detail-subtasks;
+            tags: root.detail-tags;
+            project-options: root.project-options;
+            close => { root.close-overlays(); }
+            update-title(id, t) => { root.update-title(id, t); }
+            update-notes(id, n) => { root.update-notes(id, n); }
+            toggle-status(id) => { root.toggle-status(id); }
+            set-priority(id, p) => { root.set-priority(id, p); }
+            set-due(id, y, m, d) => { root.set-due(id, y, m, d); }
+            clear-due(id) => { root.clear-due(id); }
+            set-project(id, i) => { root.set-project(id, i); }
+            set-repeating(id, on) => { root.set-repeating(id, on); }
+            set-interval(id, i) => { root.set-interval(id, i); }
+            set-recurrence-end(id, y, m, d) => { root.set-recurrence-end(id, y, m, d); }
+            clear-recurrence-end(id) => { root.clear-recurrence-end(id); }
+            toggle-tag(id, tag) => { root.toggle-tag(id, tag); }
+            add-subtask(id, t) => { root.add-subtask(id, t); }
+            toggle-subtask(id, s) => { root.toggle-subtask(id, s); }
+            delete-subtask(id, s) => { root.delete-subtask(id, s); }
+            rename-subtask(id, s, t) => { root.rename-subtask(id, s, t); }
+            draft-title(id, t) => { root.draft-title(id, t); }
+            draft-notes(id, n) => { root.draft-notes(id, n); }
+            draft-subtask(id, s, t) => { root.draft-subtask(id, s, t); }
+            commit-drafts => { root.commit-drafts(); }
+            drop-subtask(id, s, slot) => { root.drop-subtask(id, s, slot); }
+            duplicate(id) => { root.duplicate-task(id); }
+            delete(id) => { root.delete-task(id); }
+        }
+
+        if root.palette-open: palette := CommandPalette {
+            items: root.commands;
+            index <=> root.palette-index;
+            init => {
+                self.focus-input();
+            }
+            query-changed(q) => { root.palette-query(q); }
+            run(i) => {
+                root.palette-run(i);
+                root.close-overlays();
+            }
+            close => { root.close-overlays(); }
+        }
+
+        if root.search-open: SearchPanel {
+            results: root.search-results;
+            has-query: root.search-has-query;
+            init => {
+                self.focus-input();
+            }
+            query-changed(q) => { root.search-query(q); }
+            open(id) => {
+                root.close-overlays();
+                root.open-task(id);
+            }
+            close => { root.close-overlays(); }
+        }
+
+        if root.notif-open: NotifPanel {
+            overdue: root.notif-overdue;
+            today: root.notif-today;
+            open(id) => {
+                root.close-overlays();
+                root.open-task(id);
+            }
+            close => { root.close-overlays(); }
+        }
+
+        // 詳細パネルの上にも出せるよう最後に置く
+        if root.confirm-open: ConfirmDialog {
+            message: root.confirm-message;
+            ok-label: root.confirm-ok-label;
+            answered(ok) => {
+                root.confirm-open = false;
+                root.confirm-result(ok);
+                keys.focus();
+            }
+        }
+
+        // トースト。詳細パネルが開いているときはその左側、閉じているときは本文の中央下に出す
+        if root.toast-text != "": toast := Rectangle {
+            property <length> area-left: root.detail-open ? 0px : (root.sidebar-open ? 220px : 60px);
+            property <length> area-right: root.detail-open ? root.width - 480px : root.width;
+
+            width: min(toast-layout.preferred-width, min(520px, self.area-right - self.area-left - 32px));
+            height: toast-layout.preferred-height;
+            x: self.area-left + (self.area-right - self.area-left - self.width) / 2;
+            y: root.height - self.height - 24px;
+            border-radius: 6px;
+            background: root.toast-error ? Theme.high : Theme.ink;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000040;
+
+            TouchArea { }
+
+            toast-layout := HorizontalLayout {
+                padding-left: 14px;
+                padding-right: root.toast-action != "" ? 6px : 14px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 12px;
+                Label {
+                    horizontal-stretch: 1;
+                    text: root.toast-text;
+                    text-color: Theme.bg;
+                    font-size: Theme.fs-xs;
+                    line-height: 24px;
+                }
+
+                if root.toast-action != "": TextButton {
+                    text: root.toast-action;
+                    mono: false;
+                    font-size: Theme.fs-xs;
+                    font-weight: 600;
+                    text-color: Theme.bg;
+                    hover-color: Theme.bg;
+                    underline-on-hover: true;
+                    pad-x: 8px;
+                    line-height: 24px;
+                    clicked => {
+                        root.toast-action-clicked();
+                    }
+                }
+            }
+        }
+    }
+}
