@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::view::SortKey;
+
 /// 大きさはクライアント領域の物理 px（起動前は拡大率が分からないため）
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct WindowState {
@@ -26,18 +28,19 @@ fn path(dir: &Path) -> PathBuf {
     dir.join("window.json")
 }
 
-/// サイドバーと「完了済み」の開閉。ウィンドウの大きさとは別のファイルにして、
+/// サイドバーと「完了済み」の開閉、今日の一覧の並び順。ウィンドウの大きさとは別のファイルにして、
 /// 片方が読めなくてももう片方を失わないようにする。起動時の画面はいつも「今日」なので持たない
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 #[serde(default)]
 pub struct UiPrefs {
     pub sidebar_open: bool,
     pub archive_open: bool,
+    pub today_sort: SortKey,
 }
 
 impl Default for UiPrefs {
     fn default() -> Self {
-        Self { sidebar_open: true, archive_open: false }
+        Self { sidebar_open: true, archive_open: false, today_sort: SortKey::Due }
     }
 }
 
@@ -129,12 +132,12 @@ mod tests {
     fn prefs_round_trip_and_tolerate_missing_fields() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(load_prefs(dir.path()), UiPrefs::default());
-        let p = UiPrefs { sidebar_open: false, archive_open: true };
+        let p = UiPrefs { sidebar_open: false, archive_open: true, today_sort: SortKey::Priority };
         save_prefs(dir.path(), &p).unwrap();
         assert_eq!(load_prefs(dir.path()), p);
         // 古い・欠けたファイルでも既定値で補う
         std::fs::write(dir.path().join("ui-state.json"), br#"{ "archiveOpen": 1, "archive_open": true }"#).unwrap();
-        assert_eq!(load_prefs(dir.path()), UiPrefs { sidebar_open: true, archive_open: true });
+        assert_eq!(load_prefs(dir.path()), UiPrefs { archive_open: true, ..UiPrefs::default() });
     }
 
     #[test]

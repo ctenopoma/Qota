@@ -2,6 +2,7 @@
 // 旧 Tauri 版 (コミット 8d92187 まで) の src/lib/date.ts と src/pages/{Today,Inbox,ProjectDetail}.tsx のフィルタ・並び替えをここへ移した。
 
 use chrono::{Datelike, Local, NaiveDate};
+use serde::{Deserialize, Serialize};
 use slint::{Color, Model, ModelRc, SharedString, VecModel};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -49,6 +50,51 @@ pub fn sort_by_due(tasks: &mut [&Task]) {
         (Some(_), None) => std::cmp::Ordering::Less,
         (Some(x), Some(y)) => x.cmp(y),
     });
+}
+
+/// 優先度の高い順（なしは末尾）
+fn priority_rank(p: Option<Priority>) -> u8 {
+    match p {
+        Some(Priority::High) => 0,
+        Some(Priority::Medium) => 1,
+        Some(Priority::Low) => 2,
+        None => 3,
+    }
+}
+
+/// 今日の一覧の並び順。選んだものは ui-state.json に残す
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SortKey {
+    #[default]
+    Due,
+    Priority,
+    Project,
+    Created,
+}
+
+// 並び順のセレクト (ui/task-table.slint の sort-options) と同じ順
+pub const SORT_KEYS: [SortKey; 4] = [SortKey::Due, SortKey::Priority, SortKey::Project, SortKey::Created];
+
+/// 優先度順・プロジェクト順は、同じもののあいだを期日順にする。
+/// プロジェクト順はサイドバーの並びで、プロジェクトなしは末尾。追加順は古いものから
+pub fn sort_tasks(tasks: &mut [&Task], key: SortKey, projects: &[Project]) {
+    match key {
+        SortKey::Due => sort_by_due(tasks),
+        SortKey::Priority => {
+            sort_by_due(tasks);
+            tasks.sort_by_key(|t| priority_rank(t.priority));
+        }
+        SortKey::Project => {
+            sort_by_due(tasks);
+            tasks.sort_by_key(|t| {
+                t.project_id.as_ref()
+                    .and_then(|pid| projects.iter().position(|p| &p.id == pid))
+                    .unwrap_or(usize::MAX)
+            });
+        }
+        SortKey::Created => tasks.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
+    }
 }
 
 pub fn priority_to_int(p: Option<Priority>) -> i32 {
@@ -301,12 +347,7 @@ pub fn upcoming_columns(data: &AppData, expanded: &HashSet<String>, today: Naive
         .map(|(i, (title, mut items))| {
             // sortByPriority(sortByDue(...))：期日順に並べてから優先度で安定ソート
             sort_by_due(&mut items);
-            items.sort_by_key(|t| match t.priority {
-                Some(Priority::High) => 0,
-                Some(Priority::Medium) => 1,
-                Some(Priority::Low) => 2,
-                None => 3,
-            });
+            items.sort_by_key(|t| priority_rank(t.priority));
             column(&format!("upcoming-{i}"), title, items.len().to_string(), None, &items, data, expanded)
         })
         .collect()
@@ -496,6 +537,35 @@ mod tests {
         assert_eq!(cols[0].sub, "1/2");
         let ids: Vec<String> = cols[0].tasks.iter().map(|t| t.id.to_string()).collect();
         assert_eq!(ids, ["open"]);
+    }
+
+    #[test]
+    fn sort_tasks_breaks_ties_by_due() {
+        let data = crate::seed::sample_data();
+        let (p0, p1) = (data.projects[0].id.clone(), data.projects[1].id.clone());
+        let task = |id: &str, due: &str, pri: Option<Priority>, project: Option<&str>, created: &str| {
+            let mut t = task_due(Some(due), false);
+            t.id = id.into();
+            t.priority = pri;
+            t.project_id = project.map(String::from);
+            t.created_at = created.into();
+            t
+        };
+        let tasks = [
+            task("a", "2026-10-02", None, Some(&p1), "2026-09-01T00:00:00+09:00"),
+            task("b", "2026-10-02", Some(Priority::High), None, "2026-09-03T00:00:00+09:00"),
+            task("c", "2026-09-30", Some(Priority::Low), Some(&p0), "2026-09-02T00:00:00+09:00"),
+            task("d", "2026-09-29", None, Some(&p1), "2026-09-04T00:00:00+09:00"),
+        ];
+        let order = |key| {
+            let mut v: Vec<&Task> = tasks.iter().collect();
+            sort_tasks(&mut v, key, &data.projects);
+            v.iter().map(|t| t.id.as_str()).collect::<String>()
+        };
+        assert_eq!(order(SortKey::Due), "dcab");
+        assert_eq!(order(SortKey::Priority), "bcda"); // 優先度なしの d と a は期日順
+        assert_eq!(order(SortKey::Project), "cdab"); // プロジェクトなしの b は末尾
+        assert_eq!(order(SortKey::Created), "acbd");
     }
 
     #[test]

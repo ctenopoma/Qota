@@ -120,7 +120,12 @@ impl App {
             ),
             _ => (String::new(), vec![]),
         };
-        view::sort_by_due(&mut visible);
+        if route == "today" {
+            let key = view::SORT_KEYS.get(ui.get_today_sort() as usize).copied().unwrap_or_default();
+            view::sort_tasks(&mut visible, key, &data.projects);
+        } else {
+            view::sort_by_due(&mut visible);
+        }
 
         let expanded = self.expanded.borrow();
         let (done, active): (Vec<&Task>, Vec<&Task>) =
@@ -703,12 +708,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clip: RefCell::new(None),
     });
 
-    // サイドバーと「完了済み」の開閉を戻す。開発用フックで起動したときはクリック位置の前提が崩れるので戻さない
+    // サイドバーと「完了済み」の開閉、今日の並び順を戻す。開発用フックで起動したときはクリック位置の前提が崩れるので戻さない
     let dev_hooks = std::env::var_os("QOTA_STEPS").is_some() || std::env::var_os("QOTA_OPEN").is_some();
     if !dev_hooks {
         let prefs = window_state::load_prefs(&dir);
         ui.set_sidebar_open(prefs.sidebar_open);
         ui.set_archive_open(prefs.archive_open);
+        ui.set_today_sort(view::SORT_KEYS.iter().position(|k| *k == prefs.today_sort).unwrap_or(0) as i32);
     }
 
     ui.set_active_tasks(app.active.clone().into());
@@ -810,6 +816,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     });
+    on!(on_sort_changed, |a| a.refresh());
     on!(on_open_task, |a, id| {
         *a.detail_id.borrow_mut() = Some(id.to_string());
         a.refresh();
@@ -1197,6 +1204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let prefs = window_state::UiPrefs {
                     sidebar_open: ui.get_sidebar_open(),
                     archive_open: ui.get_archive_open(),
+                    today_sort: view::SORT_KEYS.get(ui.get_today_sort() as usize).copied().unwrap_or_default(),
                 };
                 if let Err(e) = window_state::save_prefs(&dir, &prefs) {
                     eprintln!("failed to save ui-state.json: {e}");

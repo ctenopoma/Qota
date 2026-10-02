@@ -33,6 +33,8 @@ export component AppWindow inherits Window {
     in property <[TaskItem]> active-tasks;
     in property <[TaskItem]> done-tasks;
     in-out property <bool> archive-open;
+    // 今日の一覧の並び順（src/view.rs の SORT_KEYS の位置）
+    in-out property <int> today-sort;
 
     // ───── sidebar ─────
     in property <[NavProject]> projects;
@@ -82,6 +84,7 @@ export component AppWindow inherits Window {
 
     callback navigate(view: string, project-id: string);
     callback add-task(title: string);
+    callback sort-changed();
     callback add-project(name: string);
     callback open-task(id: string);
     callback toggle-task(id: string);
@@ -285,6 +288,9 @@ export component AppWindow inherits Window {
                     active: root.active-tasks;
                     done: root.done-tasks;
                     archive-open <=> root.archive-open;
+                    sortable: root.view == "today";
+                    sort-index <=> root.today-sort;
+                    sort-changed => { root.sort-changed(); }
                     add-task(t) => { root.add-task(t); }
                     open(id) => { root.open-task(id); }
                     toggle(id) => { root.toggle-task(id); }
