@@ -44,6 +44,9 @@ fn calculate_next_date(date_str: &str, interval: &Interval) -> Option<String> {
 
 /// 最初の期日から終了日までの、2 回目以降の期日。毎月は最初の日（31 日など）を基準に月ごとに数える
 /// （前回の日付から足すと 1/31 → 2/28 → 3/28 とずれていくため）
+/// 1 つの繰り返しで作る件数の上限（最初の 1 件を含む）
+pub const SERIES_LIMIT: usize = 255;
+
 fn dates_until(due: &str, interval: &Interval, end_date: &str) -> Vec<String> {
     let mut out = vec![];
     if let (Interval::Monthly, Ok(base)) = (interval, NaiveDate::parse_from_str(due, "%Y-%m-%d")) {
@@ -58,7 +61,7 @@ fn dates_until(due: &str, interval: &Interval, end_date: &str) -> Vec<String> {
                 d -= 1;
             };
             let next = date.format("%Y-%m-%d").to_string();
-            if next.as_str() > end_date {
+            if next.as_str() > end_date || out.len() + 1 >= SERIES_LIMIT {
                 break;
             }
             out.push(next);
@@ -67,7 +70,7 @@ fn dates_until(due: &str, interval: &Interval, end_date: &str) -> Vec<String> {
     }
     let mut current = due.to_string();
     while let Some(next) = calculate_next_date(&current, interval) {
-        if next.as_str() > end_date {
+        if next.as_str() > end_date || out.len() + 1 >= SERIES_LIMIT {
             break;
         }
         current = next.clone();
@@ -136,14 +139,19 @@ pub fn update_task(state: &AppState, id: &str, patch: TaskPatch) -> Result<Vec<T
 
         let old_recurrence_id = data.tasks[t_idx].recurrence_id.clone();
 
-        let series_changed = patch.title.is_some()
-            || patch.notes.is_some()
-            || patch.priority.is_some()
-            || patch.due.is_some()
-            || patch.project_id.is_some()
-            || patch.tag_ids.is_some()
-            || patch.interval.is_some()
-            || patch.recurrence_end.is_some();
+        // 頻度・終了日の変更（と、以降すべてでの期日の変更）は、以降の回を作り直す。
+        // 題名・メモなどの変更は「この回だけ」なら 1 件だけ、「以降すべて」なら後の回をその場で書き換える（個別の編集を消さない）
+        let series_changed = patch.interval.is_some()
+            || patch.recurrence_end.is_some()
+            || (patch.following && patch.due.is_some());
+        let propagate = patch.following && !series_changed && old_recurrence_id.is_some();
+        let (set_title, set_notes, set_priority, set_project, set_tags) = (
+            patch.title.is_some(),
+            patch.notes.is_some(),
+            patch.priority.is_some(),
+            patch.project_id.is_some(),
+            patch.tag_ids.is_some(),
+        );
 
         {
             let t = &mut data.tasks[t_idx];
@@ -170,6 +178,27 @@ pub fn update_task(state: &AppState, id: &str, patch: TaskPatch) -> Result<Vec<T
         }
 
         let t = data.tasks[t_idx].clone();
+
+        if propagate {
+            if let Some(rid) = &old_recurrence_id {
+                let current_due = t.due.clone().unwrap_or_default();
+                for x in data.tasks.iter_mut() {
+                    if x.id == t.id
+                        || x.recurrence_id.as_deref() != Some(rid)
+                        || x.status != TaskStatus::Todo
+                        || x.due.clone().unwrap_or_default() <= current_due
+                    {
+                        continue;
+                    }
+                    if set_title { x.title = t.title.clone(); }
+                    if set_notes { x.notes = t.notes.clone(); }
+                    if set_priority { x.priority = t.priority; }
+                    if set_project { x.project_id = t.project_id.clone(); }
+                    if set_tags { x.tag_ids = t.tag_ids.clone(); }
+                    x.updated_at = t.updated_at.clone();
+                }
+            }
+        }
 
         if series_changed {
             if let Some(rid) = &old_recurrence_id {
@@ -395,5 +424,66 @@ mod tests {
     fn monthly_keeps_the_original_day_across_short_months() {
         let got = dates_until("2026-01-31", &Interval::Monthly, "2026-05-31");
         assert_eq!(got, ["2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31"]);
+    }
+
+    #[test]
+    fn series_is_capped_at_the_limit() {
+        let got = dates_until("2026-01-01", &Interval::Daily, "2099-12-31");
+        assert_eq!(got.len() + 1, SERIES_LIMIT);
+        let monthly = dates_until("2026-01-01", &Interval::Monthly, "2099-12-31");
+        assert_eq!(monthly.len() + 1, SERIES_LIMIT);
+    }
+
+    fn series(s: &AppState) -> Vec<Task> {
+        let t = create_task(s, NewTask {
+            title: "毎日".into(),
+            due: Some("2026-01-01".into()),
+            interval: Some(Interval::Daily),
+            recurrence_end: Some("2026-01-05".into()),
+            ..Default::default()
+        }).unwrap();
+        let mut v: Vec<Task> = s.data.lock().tasks.iter()
+            .filter(|x| x.recurrence_id == t.recurrence_id).cloned().collect();
+        v.sort_by(|a, b| a.due.cmp(&b.due));
+        v
+    }
+
+    fn titles(s: &AppState, rid: &Option<String>) -> Vec<String> {
+        let mut v: Vec<Task> = s.data.lock().tasks.iter().filter(|x| &x.recurrence_id == rid).cloned().collect();
+        v.sort_by(|a, b| a.due.cmp(&b.due));
+        v.into_iter().map(|x| x.title).collect()
+    }
+
+    #[test]
+    fn editing_one_occurrence_leaves_the_others_alone() {
+        let (_d, s) = state();
+        let v = series(&s);
+        assert_eq!(v.len(), 5);
+        let second = v[1].id.clone();
+        update_task(&s, &second, TaskPatch { title: Some("この回だけ".into()), ..Default::default() }).unwrap();
+        assert_eq!(titles(&s, &v[0].recurrence_id), ["毎日", "この回だけ", "毎日", "毎日", "毎日"]);
+        // 期日をずらしても、ほかの回は作り直さない
+        update_task(&s, &second, TaskPatch { due: Some(Some("2026-01-20".into())), ..Default::default() }).unwrap();
+        assert_eq!(titles(&s, &v[0].recurrence_id).len(), 5);
+    }
+
+    #[test]
+    fn editing_following_changes_later_occurrences_in_place() {
+        let (_d, s) = state();
+        let v = series(&s);
+        // 3 回目に個別のメモを付けておく。以降すべてで題名を変えても、メモは残る
+        update_task(&s, &v[2].id, TaskPatch { notes: Some("個別のメモ".into()), ..Default::default() }).unwrap();
+        update_task(&s, &v[1].id, TaskPatch { title: Some("以降".into()), following: true, ..Default::default() }).unwrap();
+        assert_eq!(titles(&s, &v[0].recurrence_id), ["毎日", "以降", "以降", "以降", "以降"]);
+        let third = s.data.lock().tasks.iter().find(|x| x.id == v[2].id).cloned().unwrap();
+        assert_eq!(third.notes, "個別のメモ");
+    }
+
+    #[test]
+    fn changing_the_end_date_rebuilds_later_occurrences() {
+        let (_d, s) = state();
+        let v = series(&s);
+        update_task(&s, &v[0].id, TaskPatch { recurrence_end: Some(Some("2026-01-03".into())), ..Default::default() }).unwrap();
+        assert_eq!(titles(&s, &v[0].recurrence_id).len(), 3);
     }
 }

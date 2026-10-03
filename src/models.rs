@@ -145,6 +145,9 @@ pub struct TaskPatch {
     pub tag_ids: Option<Vec<String>>,
     pub interval: Option<Option<Interval>>,
     pub recurrence_end: Option<Option<String>>,
+    /// 繰り返しの 1 件を変えるとき、この回より後の回にも反映するか（false ならこの回だけ）。
+    /// 頻度と終了日の変更は、いつでも以降の回を作り直す
+    pub following: bool,
 }
 
 #[derive(Debug, Default)]

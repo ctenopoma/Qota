@@ -42,6 +42,8 @@ export component AppWindow inherits Window {
 
     // ───── detail ─────
     in-out property <bool> detail-open;
+    // 繰り返しの 1 件を変えるとき、以降の回にも反映するか。詳細パネルの「変更の範囲」で切り替える
+    in-out property <bool> series-following;
     in property <TaskDetailData> detail;
     in property <[SubtaskItem]> detail-subtasks;
     in property <[TagChip]> detail-tags;
@@ -91,6 +93,7 @@ export component AppWindow inherits Window {
     callback toggle-expanded(id: string);
     callback set-priority(id: string, p: int);
     callback set-due(id: string, y: int, m: int, d: int);
+    callback set-due-in(id: string, days: int);
     callback clear-due(id: string);
     callback duplicate-task(id: string);
     callback delete-task(id: string);
@@ -368,6 +371,7 @@ export component AppWindow inherits Window {
 
         if root.detail-open: TaskDetail {
             data: root.detail;
+            following <=> root.series-following;
             subtasks: root.detail-subtasks;
             tags: root.detail-tags;
             project-options: root.project-options;
@@ -377,6 +381,7 @@ export component AppWindow inherits Window {
             toggle-status(id) => { root.toggle-status(id); }
             set-priority(id, p) => { root.set-priority(id, p); }
             set-due(id, y, m, d) => { root.set-due(id, y, m, d); }
+            set-due-in(id, days) => { root.set-due-in(id, days); }
             clear-due(id) => { root.clear-due(id); }
             set-project(id, i) => { root.set-project(id, i); }
             set-repeating(id, on) => { root.set-repeating(id, on); }

@@ -30,6 +30,8 @@ export component TaskDetail inherits Rectangle {
     callback set-priority(id: string, p: int);
     callback set-due(id: string, y: int, m: int, d: int);
     callback clear-due(id: string);
+    // 今日から days 日後を期日にする（クイック指定）
+    callback set-due-in(id: string, days: int);
     callback set-project(id: string, index: int);
     callback set-repeating(id: string, on: bool);
     callback set-interval(id: string, index: int);
@@ -49,6 +51,9 @@ export component TaskDetail inherits Rectangle {
     callback drop-subtask(id: string, subtask-id: string, slot: int);
     callback duplicate(id: string);
     callback delete(id: string);
+
+    // 繰り返しの 1 件を変えるとき、以降の回にも反映するか（false = この回だけ）
+    in-out property <bool> following;
 
     property <int> hover-slot: -1;
     property <string> editing-id;
@@ -196,6 +201,40 @@ export component TaskDetail inherits Rectangle {
 
                         Field {
                             FieldLabel {
+                                text: "";
+                            }
+
+                            HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+                                TextButton {
+                                    text: "今日";
+                                    bordered: true;
+                                    clicked => {
+                                        root.set-due-in(root.data.id, 0);
+                                    }
+                                }
+
+                                TextButton {
+                                    text: "明日";
+                                    bordered: true;
+                                    clicked => {
+                                        root.set-due-in(root.data.id, 1);
+                                    }
+                                }
+
+                                TextButton {
+                                    text: "1週間後";
+                                    bordered: true;
+                                    clicked => {
+                                        root.set-due-in(root.data.id, 7);
+                                    }
+                                }
+                            }
+                        }
+
+                        Field {
+                            FieldLabel {
                                 text: "繰り返し";
                             }
 
@@ -276,8 +315,33 @@ export component TaskDetail inherits Rectangle {
                                             }
                                         }
 
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            Label {
+                                                width: 48px;
+                                                text: "変更";
+                                                text-color: Theme.mute;
+                                                font-size: Theme.fs-xs;
+                                            }
+
+                                            Select {
+                                                horizontal-stretch: 1;
+                                                options: ["この回だけ", "以降すべて"];
+                                                current-index: root.following ? 1 : 0;
+                                                selected(i) => {
+                                                    root.following = i == 1;
+                                                }
+                                            }
+                                        }
+
                                         Label {
-                                            text: "終了日までの分を先に作ります。空のままだと繰り返しません";
+                                            text: "題名・メモなどの変更の範囲。頻度・終了日は以降を作り直します";
+                                            text-color: Theme.mute;
+                                            font-size: Theme.fs-2xs;
+                                        }
+
+                                        Label {
+                                            text: "終了日まで先に作ります（最大 255 件）。空だと繰り返しません";
                                             text-color: Theme.mute;
                                             font-size: Theme.fs-2xs;
                                         }

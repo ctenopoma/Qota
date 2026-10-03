@@ -1222,17 +1222,6 @@ component NotifSection inherits VerticalLayout {
 
     HLine { }
 
-    if root.items.length == 0: HorizontalLayout {
-        padding-left: 16px;
-        padding-top: 12px;
-        padding-bottom: 12px;
-        Label {
-            text: "なし";
-            text-color: Theme.faint;
-            font-size: Theme.fs-2xs;
-        }
-    }
-
     for t in root.items: nta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
@@ -1248,9 +1237,19 @@ component NotifSection inherits VerticalLayout {
                 padding-right: 16px;
                 padding-top: 8px;
                 padding-bottom: 8px;
+                spacing: 8px;
                 Label {
+                    horizontal-stretch: 1;
                     text: t.title;
                     text-color: root.alert ? Theme.high : Theme.ink;
+                }
+
+                // 期限切れは、いつの期日だったかを添える
+                if root.alert: Label {
+                    text: t.due-label;
+                    text-color: Theme.high;
+                    font-size: Theme.fs-2xs;
+                    mono: true;
                 }
             }
 
@@ -1313,17 +1312,29 @@ export component NotifPanel inherits Rectangle {
 
             HLine { }
 
-            NotifSection {
+            // 0 件の見出しは出さない。どちらも空のときは 1 行だけ案内する
+            if root.overdue.length > 0: NotifSection {
                 title: "期限切れ";
                 items: root.overdue;
                 alert: true;
                 open(id) => { root.open(id); }
             }
 
-            NotifSection {
+            if root.today.length > 0: NotifSection {
                 title: "今日";
                 items: root.today;
                 open(id) => { root.open(id); }
+            }
+
+            if root.overdue.length == 0 && root.today.length == 0: HorizontalLayout {
+                padding-left: 16px;
+                padding-top: 16px;
+                padding-bottom: 16px;
+                Label {
+                    text: "期限切れ・今日のタスクはありません";
+                    text-color: Theme.faint;
+                    font-size: Theme.fs-2xs;
+                }
             }
         }
     }

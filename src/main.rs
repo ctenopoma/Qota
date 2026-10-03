@@ -484,7 +484,8 @@ impl App {
         }
     }
 
-    fn patch(&self, id: &str, patch: TaskPatch) {
+    fn patch(&self, id: &str, mut patch: TaskPatch) {
+        patch.following = self.ui().get_series_following();
         let label = patch_label(&self.state.data.lock(), id, &patch);
         self.mutate(|_| label, |s| tasks::update_task(s, id, patch));
     }
@@ -874,6 +875,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     on!(on_sort_changed, |a| a.refresh());
     on!(on_open_task, |a, id| {
         *a.detail_id.borrow_mut() = Some(id.to_string());
+        a.ui().set_series_following(false);
         a.refresh();
         a.ui().set_detail_open(true);
     });
@@ -891,6 +893,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     on!(on_set_priority, |a, id, p| a.patch(&id, TaskPatch { priority: Some(view::int_to_priority(p)), ..Default::default() }));
     on!(on_set_due, |a, id, y, m, d| a.patch(&id, TaskPatch { due: Some(view::iso(y, m, d)), ..Default::default() }));
+    on!(on_set_due_in, |a, id, days| {
+        let due = (view::today() + chrono::Duration::days(days as i64)).format("%Y-%m-%d").to_string();
+        a.patch(&id, TaskPatch { due: Some(Some(due)), ..Default::default() });
+    });
     on!(on_clear_due, |a, id| a.patch(&id, TaskPatch { due: Some(None), ..Default::default() }));
     on!(on_update_title, |a, id, title| {
         a.drafts.borrow_mut().title = None;
