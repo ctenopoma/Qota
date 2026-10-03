@@ -271,9 +271,9 @@ impl App {
         let ui = self.ui();
         ui.set_toast_action(if undoable { "元に戻す".into() } else { SharedString::new() });
         ui.set_toast_error(error);
-        ui.set_toast_text(shorten_middle(&msg, 64).into());
+        ui.set_toast_text(shorten_middle(&msg, 80).into());
         let weak = self.ui.clone();
-        let secs = if undoable { 5 } else { 3 };
+        let secs = if undoable { 5 } else if error { 6 } else { 3 };
         self.toast_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(secs), move || {
             if let Some(ui) = weak.upgrade() {
                 ui.set_toast_text(SharedString::new());
@@ -292,7 +292,14 @@ impl App {
             if undo { h.undo(current) } else { h.redo(current) }
         };
         let Some((mut target, label)) = target else {
-            self.toast(if undo { "取り消せる操作はありません" } else { "やり直せる操作はありません" }.into(), false, false);
+            let msg = if !undo {
+                "やり直せる操作はありません"
+            } else if self.undo_stack.borrow().was_trimmed() {
+                "これより古い操作は取り消せません（直近 20 件まで）"
+            } else {
+                "取り消せる操作はありません"
+            };
+            self.toast(msg.into(), false, false);
             return;
         };
         // 表示モードは取り消しの対象外なので、今の設定を引き継ぐ
@@ -484,6 +491,10 @@ impl App {
     fn import_with_dialog(&self, start_dir: Option<&Path>) {
         let Some(path) = io::pick_import_file(start_dir) else { return };
         let name = quoted(&path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+        if let Some(why) = io::import_problem(&path) {
+            self.toast(format!("{name}を読み込めませんでした（{why}）。今のデータは変わっていません"), false, true);
+            return;
+        }
         if let Err(e) = store::backup_before(self.state.dir(), "import", Local::now()) {
             eprintln!("backup failed: {e}");
         }
@@ -664,17 +675,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(s) => s,
         Err(e) => {
             // 読めないときは何も出さずに終わらず、原因とバックアップの場所を伝える
-            rfd::MessageDialog::new()
+            let backups = store::backups_dir(&dir);
+            let open = rfd::MessageDialog::new()
                 .set_title("Qota")
                 .set_level(rfd::MessageLevel::Error)
+                .set_buttons(rfd::MessageButtons::YesNo)
                 .set_description(format!(
                     "データを読み込めませんでした。
 {e}
 
-{} の qota.json が壊れている可能性があります。backups フォルダの最新のファイルを qota.json に置き換えると戻せます。",
-                    dir.display()
+{} の qota.json が壊れている可能性があります。
+{} にある最新のバックアップ（qota-年-月-日.json）を、壊れた qota.json と置き換えると戻せます（壊れたほうは名前を変えて残しておくと安全です）。
+バックアップが無いときは qota.json を削除すると、サンプルデータで始まります。
+
+バックアップのフォルダを開きますか？",
+                    dir.display(),
+                    backups.display()
                 ))
                 .show();
+            if open == rfd::MessageDialogResult::Yes {
+                let _ = std::fs::create_dir_all(&backups);
+                let _ = std::process::Command::new("explorer").arg(&backups).spawn();
+            }
             return Err(e.into());
         }
     };
@@ -977,7 +999,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ───── projects ─────
     on!(on_add_project, |a, name| {
-        if !name.trim().is_empty() {
+        let dup = a.state.data.lock().projects.iter().any(|p| p.name.trim().to_lowercase() == name.trim().to_lowercase());
+        if dup {
+            a.toast(format!("{}という名前のプロジェクトはすでにあります", quoted(name.trim())), false, true);
+        } else if !name.trim().is_empty() {
             a.mutate(
                 |_| format!("プロジェクト{}の追加", quoted(name.trim())),
                 |s| projects::create_project(s, NewProject { name: name.to_string(), color: None }),

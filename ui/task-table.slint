@@ -183,18 +183,25 @@ export component TaskRow inherits Rectangle {
                 }
 
                 HorizontalLayout {
-                    spacing: 4px;
+                    // 間隔は各要素の左余白で取る（2 個を超えて隠したタグが間隔だけ残さないように）
+                    spacing: 0px;
                     alignment: end;
-                    if root.task.repeating: Badge {
-                        text: "🔁";
+                    if root.task.repeating: HorizontalLayout {
+                        padding-left: 4px;
+                        Badge {
+                            text: "🔁";
+                        }
                     }
-                    if root.task.project-name != "": Badge {
-                        text: root.task.project-name;
+                    if root.task.project-name != "": HorizontalLayout {
+                        padding-left: 4px;
+                        Badge {
+                            text: root.task.project-name;
+                        }
                     }
                     for tag[i] in root.task.tags: Label {
                         visible: i < 2;
                         width: i < 2 ? self.preferred-width : 0px;
-                        text: "#" + tag;
+                        text: "#" + tag + " ";
                         text-color: Theme.faint;
                         font-size: Theme.fs-2xs;
                         mono: true;

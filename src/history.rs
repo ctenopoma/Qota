@@ -11,6 +11,8 @@ const NAV_LIMIT: usize = 50;
 #[derive(Default)]
 pub struct UndoStack {
     undo: Vec<(AppData, String)>,
+    /// 上限を超えて古い履歴を捨てたことがあるか。取り消せる操作が尽きたときの案内を変える
+    trimmed: bool,
     redo: Vec<(AppData, String)>,
 }
 
@@ -20,8 +22,13 @@ impl UndoStack {
         self.undo.push((before, label));
         if self.undo.len() > UNDO_LIMIT {
             self.undo.remove(0);
+            self.trimmed = true;
         }
         self.redo.clear();
+    }
+
+    pub fn was_trimmed(&self) -> bool {
+        self.trimmed
     }
 
     /// 戻した先のデータと、取り消した操作の説明を返す。今のデータはやり直し用に残す

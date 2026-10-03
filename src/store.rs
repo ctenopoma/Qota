@@ -22,6 +22,11 @@ pub fn resolve_data_dir() -> PathBuf {
         .join(DATA_IDENTIFIER)
 }
 
+/// PowerShell 5.1 などが付ける UTF-8 の BOM は、JSON として読む前に外す
+pub fn strip_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes)
+}
+
 pub struct AppState {
     pub data: Mutex<AppData>,
     pub path: PathBuf,
@@ -33,9 +38,7 @@ impl AppState {
         let path = app_data_dir.join("qota.json");
         let mut data = if path.exists() {
             let bytes = std::fs::read(&path)?;
-            // PowerShell 5.1 などが付ける BOM は読む前に外す
-            let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
-            let data: AppData = serde_json::from_slice(body)?;
+            let data: AppData = serde_json::from_slice(strip_bom(&bytes))?;
             // migrate(&mut data)?;
             data
         } else {

@@ -27,10 +27,23 @@ pub fn pick_import_file(start_dir: Option<&Path>) -> Option<PathBuf> {
     dialog.pick_file()
 }
 
+/// 読み込めないファイルの理由を、画面に出せる日本語で返す。読めるなら None
+pub fn import_problem(path: &Path) -> Option<String> {
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(_) => return Some("ファイルを開けません".into()),
+    };
+    match serde_json::from_slice::<AppData>(crate::store::strip_bom(&bytes)) {
+        Err(_) => Some("Qota のデータの形式ではありません".into()),
+        Ok(d) if d.schema_version != 1 => Some("対応していない版のデータです".into()),
+        Ok(_) => None,
+    }
+}
+
 /// 選んだファイルで今のデータを置き換える。形式が違えば何も変えない
 pub fn import_from(state: &AppState, path: &Path) -> Result<()> {
     let bytes = std::fs::read(path)?;
-    let new_data: AppData = serde_json::from_slice(&bytes)?;
+    let new_data: AppData = serde_json::from_slice(crate::store::strip_bom(&bytes))?;
     if new_data.schema_version != 1 {
         return Err(Error::UnsupportedSchema(new_data.schema_version));
     }
@@ -57,5 +70,22 @@ mod tests {
         std::fs::write(&bad, b"{ not json").unwrap();
         assert!(import_from(&s, &bad).is_err());
         assert_eq!(*s.data.lock(), before);
+    }
+
+    #[test]
+    fn import_reads_bom_file_and_explains_broken_one() {
+        let dir = tempdir().unwrap();
+        let s = AppState::load_or_init(dir.path().to_path_buf()).unwrap();
+        let json = serde_json::to_vec(&*s.data.lock()).unwrap();
+        let bom = dir.path().join("bom.json");
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend(json);
+        std::fs::write(&bom, bytes).unwrap();
+        assert!(import_problem(&bom).is_none());
+        assert!(import_from(&s, &bom).is_ok());
+
+        let bad = dir.path().join("bad.json");
+        std::fs::write(&bad, b"{ not json").unwrap();
+        assert!(import_problem(&bad).is_some());
     }
 }
