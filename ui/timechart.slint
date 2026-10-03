@@ -1,156 +1,191 @@
-// 今日のタイムチャート。時間軸（15 分刻み）に、今日のタスクを計画の棒として置く。
-// 置き方: 右の「未配置」からドラッグ / Enter で今の時刻の後ろへ。棒はドラッグで動かし、下の端を引いて長さを変える。
-// キーボード: 棒に Tab で止まり、↑ ↓ で 15 分ずらし、Shift+↑ ↓ で長さを変え、Delete で外し、Enter で詳細を開く。
+// 今日のタイムチャート。横軸が時間（15 分刻み）、行が今日のタスク（1 行に 1 つ）。
+// 計画の棒: 未配置の行の、置きたい時刻をクリックして置く。棒はドラッグで動かし、右の端を引いて長さを変える。
+// キーボード: 行に Tab で止まり、← → で 15 分ずらし、Shift+← → で長さを変え、Delete で外し、Enter で詳細（棒が無ければ今の時刻の後ろへ置く）。
 import { ScrollView } from "std-widgets.slint";
-import { Theme, Bridge } from "theme.slint";
+import { Theme } from "theme.slint";
 import { Label, TextButton, HLine, KeyFocus, FocusRing } from "widgets.slint";
-import { TaskItem, PlanBlockItem } from "types.slint";
+import { PlanRowItem } from "types.slint";
 
-// 計画の棒 1 本
-component PlanBlockView inherits Rectangle {
-    in property <PlanBlockItem> block;
-    in property <length> slot-h;
+// 1 行（1 つのタスク）。左に題名、右に時間軸と計画の棒
+component PlanRow inherits Rectangle {
+    in property <PlanRowItem> item;
+    in property <int> slots;
+    in property <length> label-w;
+    in property <length> slot-w;
+    in property <bool> alt;
+    // 狭いウィンドウ: 題名を行の上に 1 行出し（横にスクロールしても左端に残す）、棒は下の段に置く
+    in property <bool> compact;
+    in property <length> pin-x: 0px;
+    property <length> lane-y: root.compact ? 22px : 0px;
+
     callback open(task-id: string);
-    callback resize(id: string, len-slots: int);
-    callback move-by(id: string, delta-slots: int);
-    callback resize-by(id: string, delta-slots: int);
-    callback remove(id: string);
-    // つかんだ位置（棒の上端から何枠目か）。動かして落としたとき、棒の上端をその分だけ戻すために使う
-    callback grabbed(offset-slots: int);
+    // slot の位置に棒を置く（棒があれば、その位置へ動かす）
+    callback place(task-id: string, slot: int);
+    callback place-now(task-id: string);
+    callback resize(block-id: string, len-slots: int);
+    callback move-by(block-id: string, delta-slots: int);
+    callback resize-by(block-id: string, delta-slots: int);
+    callback remove(block-id: string);
 
-    // 下の端を引いている間の長さ（枠の数）。引いていなければ -1
+    property <bool> has-block: root.item.block-id != "";
+    // 引いている間の位置と長さ（枠の数）。引いていなければ -1
+    property <int> preview-start: -1;
     property <int> preview-len: -1;
-    property <int> shown-len: root.preview-len > 0 ? root.preview-len : root.block.len-slots;
+    // 1 動かす / 2 長さを変える / 3 置く（クリック）
+    property <int> mode: 0;
+    property <int> grab: 0;
+    property <int> press-slot: 0;
+    property <bool> dragged: false;
+    property <int> shown-start: root.preview-start >= 0 ? root.preview-start : root.item.start-slot;
+    property <int> shown-len: root.preview-len > 0 ? root.preview-len : root.item.len-slots;
 
-    height: root.shown-len * root.slot-h - 2px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: Theme.accent;
-    background: root.block.done ? Theme.panel2 : Theme.accent.with-alpha(0.22);
-    clip: true;
+    background: root.alt ? Theme.panel.with-alpha(0.55) : transparent;
 
-    drag := DragArea {
-        allow-move: true;
-        data: Bridge.payload("block:" + root.block.id);
-
-        body := TouchArea {
+    // 題名。クリックで詳細
+    Rectangle {
+        x: root.compact ? root.pin-x : 0px;
+        width: root.compact ? 260px : root.label-w;
+        height: root.compact ? 22px : root.height;
+        title-ta := TouchArea {
             mouse-cursor: pointer;
             clicked => {
-                root.open(root.block.task-id);
+                root.open(root.item.task-id);
             }
-            pointer-event(event) => {
-                if event.kind == PointerEventKind.down {
-                    root.grabbed(floor(self.mouse-y / root.slot-h));
-                }
-            }
-
             HorizontalLayout {
-                padding-left: 8px;
+                padding-left: root.compact ? 8px : 24px;
                 padding-right: 8px;
-                padding-top: 3px;
                 Label {
                     horizontal-stretch: 1;
-                    text: root.block.title;
-                    strike: root.block.done;
-                    text-color: root.block.done ? Theme.mute : Theme.ink;
+                    text: root.item.title;
+                    strike: root.item.done;
+                    text-color: root.item.done ? Theme.mute : Theme.ink;
                     font-size: Theme.fs-xs;
+                    line-height: root.compact ? 22px : root.height;
                 }
             }
         }
     }
 
-    // 下の端。引いて長さを変える（引き始めの位置からの移動量を枠に換算する）
-    Rectangle {
-        y: root.block.len-slots * root.slot-h - 10px;
-        height: 8px;
-        handle := TouchArea {
-            mouse-cursor: ns-resize;
-            moved => {
-                root.preview-len = max(1, root.block.len-slots + round((self.mouse-y - self.pressed-y) / root.slot-h));
-            }
-            pointer-event(event) => {
-                if event.kind == PointerEventKind.up {
-                    if root.preview-len > 0 && root.preview-len != root.block.len-slots {
-                        root.resize(root.block.id, root.preview-len);
+    // 計画の棒（見た目だけ。操作は下の lane が受ける）
+    if root.has-block: Rectangle {
+        x: root.label-w + root.shown-start * root.slot-w + 1px;
+        y: root.lane-y + 4px;
+        width: root.shown-len * root.slot-w - 2px;
+        height: root.height - root.lane-y - 8px;
+        border-radius: 4px;
+        border-width: 1px;
+        border-color: Theme.accent;
+        background: root.item.done ? Theme.panel2 : Theme.accent.with-alpha(0.3);
+        // 右端のつまみ
+        Rectangle {
+            x: parent.width - 5px;
+            width: 3px;
+            y: 6px;
+            height: parent.height - 12px;
+            border-radius: 1px;
+            background: Theme.accent.with-alpha(0.7);
+        }
+    }
+
+    // 時間軸の上の操作
+    lane := TouchArea {
+        x: root.label-w;
+        y: root.lane-y;
+        height: root.height - root.lane-y;
+        width: root.slots * root.slot-w;
+        mouse-cursor: pointer;
+
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                root.press-slot = max(0, min(root.slots - 1, floor(self.mouse-x / root.slot-w)));
+                root.dragged = false;
+                root.grab = 0;
+                if root.has-block {
+                    if self.mouse-x >= (root.item.start-slot + root.item.len-slots) * root.slot-w - 10px
+                        && self.mouse-x <= (root.item.start-slot + root.item.len-slots) * root.slot-w + 2px {
+                        root.mode = 2;
+                    } else if self.mouse-x >= root.item.start-slot * root.slot-w
+                        && self.mouse-x < (root.item.start-slot + root.item.len-slots) * root.slot-w {
+                        root.mode = 1;
+                        root.grab = root.press-slot - root.item.start-slot;
+                    } else {
+                        root.mode = 3;
                     }
-                    root.preview-len = -1;
+                } else {
+                    root.mode = 3;
                 }
+            } else if event.kind == PointerEventKind.up {
+                if root.mode == 1 {
+                    if root.dragged && root.preview-start >= 0 && root.preview-start != root.item.start-slot {
+                        root.place(root.item.task-id, root.preview-start);
+                    } else if !root.dragged {
+                        root.open(root.item.task-id);
+                    }
+                } else if root.mode == 2 {
+                    if root.preview-len > 0 && root.preview-len != root.item.len-slots {
+                        root.resize(root.item.block-id, root.preview-len);
+                    }
+                } else if root.mode == 3 {
+                    root.place(root.item.task-id, root.press-slot);
+                }
+                root.mode = 0;
+                root.preview-start = -1;
+                root.preview-len = -1;
+            } else if event.kind == PointerEventKind.cancel {
+                root.mode = 0;
+                root.preview-start = -1;
+                root.preview-len = -1;
+            }
+        }
+
+        moved => {
+            if root.mode == 1 {
+                root.dragged = true;
+                root.preview-start = max(0, min(root.slots - root.item.len-slots, floor(self.mouse-x / root.slot-w) - root.grab));
+            } else if root.mode == 2 {
+                root.dragged = true;
+                root.preview-len = max(1, min(root.slots - root.item.start-slot, floor(self.mouse-x / root.slot-w) - root.item.start-slot + 1));
             }
         }
     }
 
+    // キーボード: Tab で行に止まる
     kf := KeyFocus {
         activated => {
-            root.open(root.block.task-id);
+            if root.has-block {
+                root.open(root.item.task-id);
+            } else {
+                root.place-now(root.item.task-id);
+            }
         }
         deleted => {
-            root.remove(root.block.id);
-        }
-
-        KeyBinding {
-            keys: @keys(UpArrow);
-            activated => { root.move-by(root.block.id, -1); }
-        }
-
-        KeyBinding {
-            keys: @keys(DownArrow);
-            activated => { root.move-by(root.block.id, 1); }
-        }
-
-        KeyBinding {
-            keys: @keys(Shift + UpArrow);
-            activated => { root.resize-by(root.block.id, -1); }
-        }
-
-        KeyBinding {
-            keys: @keys(Shift + DownArrow);
-            activated => { root.resize-by(root.block.id, 1); }
-        }
-    }
-
-    FocusRing {
-        on: kf.ring;
-        grow: 0px;
-    }
-}
-
-// 右の「未配置」の 1 件。ドラッグして時間軸へ、または Enter で今の時刻の後ろへ置く
-component UnplacedRow inherits Rectangle {
-    in property <TaskItem> task;
-    callback open(task-id: string);
-    callback place(task-id: string);
-
-    height: 30px;
-    border-radius: 4px;
-    border-width: 1px;
-    border-color: ta.has-hover ? Theme.mute : Theme.border;
-    background: Theme.bg;
-
-    drag := DragArea {
-        allow-move: true;
-        data: Bridge.payload("task:" + root.task.id);
-
-        ta := TouchArea {
-            mouse-cursor: pointer;
-            clicked => {
-                root.open(root.task.id);
-            }
-
-            HorizontalLayout {
-                padding-left: 8px;
-                padding-right: 8px;
-                Label {
-                    horizontal-stretch: 1;
-                    text: root.task.title;
-                    font-size: Theme.fs-xs;
-                }
+            if root.has-block {
+                root.remove(root.item.block-id);
             }
         }
-    }
 
-    kf := KeyFocus {
-        activated => {
-            root.place(root.task.id);
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            enabled: root.has-block;
+            activated => { root.move-by(root.item.block-id, -1); }
+        }
+
+        KeyBinding {
+            keys: @keys(RightArrow);
+            enabled: root.has-block;
+            activated => { root.move-by(root.item.block-id, 1); }
+        }
+
+        KeyBinding {
+            keys: @keys(Shift + LeftArrow);
+            enabled: root.has-block;
+            activated => { root.resize-by(root.item.block-id, -1); }
+        }
+
+        KeyBinding {
+            keys: @keys(Shift + RightArrow);
+            enabled: root.has-block;
+            activated => { root.resize-by(root.item.block-id, 1); }
         }
     }
 
@@ -161,35 +196,34 @@ component UnplacedRow inherits Rectangle {
 }
 
 export component TimeChart inherits Rectangle {
-    in property <[PlanBlockItem]> blocks;
-    // まだ棒にしていない今日のタスク
-    in property <[TaskItem]> unplaced;
+    // 今日のタスク 1 件につき 1 行（今日の一覧と同じ並び）
+    in property <[PlanRowItem]> rows;
     // 時間軸の 15 分の枠の数と、先頭の時刻（時）
     in property <int> slots;
     in property <int> start-hour;
     // 今の時刻の位置（先頭からの枠の数。軸の外なら -1）
     in property <float> now-slot;
-    // 狭いウィンドウでは、未配置を上に出す
+    // 棒を置いていない（完了していない）タスクの数
+    in property <int> unplaced-count;
+    // 狭いウィンドウでは、枠の幅を固定して横にスクロールする
     in property <bool> compact;
 
-    // payload は "task:<id>"（未配置から）か "block:<id>"（棒の移動）。slot は落とした位置の枠の番号
-    callback drop-payload(payload: string, slot: int, grab: int);
-    callback place(task-id: string);
+    callback place(task-id: string, slot: int);
+    callback place-now(task-id: string);
     callback arrange();
     callback open(task-id: string);
-    callback resize(id: string, len-slots: int);
-    callback move-by(id: string, delta-slots: int);
-    callback resize-by(id: string, delta-slots: int);
-    callback remove(id: string);
+    callback resize(block-id: string, len-slots: int);
+    callback move-by(block-id: string, delta-slots: int);
+    callback resize-by(block-id: string, delta-slots: int);
+    callback remove(block-id: string);
     callback show-list();
 
-    property <length> slot-h: 22px;
-    property <length> label-w: 52px;
-    property <int> hover-slot: -1;
-    // 動かしている棒をつかんだ位置（棒の上端から何枠目か）
-    property <int> grab: 0;
-
-    // 開いたとき、今の時刻が見えるところまで 1 回だけスクロールする（大きさが決まってから）
+    property <length> label-w: root.compact ? 8px : 220px;
+    property <length> row-h: root.compact ? 56px : 36px;
+    property <length> head-h: 30px;
+    // 1 日がちょうど横に収まる幅（狭いときは 12px 固定でスクロール）
+    property <length> slot-w: root.compact ? 12px : max(8px, (root.width - root.label-w - 32px) / max(1, root.slots));
+    // 開いたとき、今の時刻が見えるところまで 1 回だけ横にスクロールする（収まらないとき）
     property <bool> scrolled;
 
     VerticalLayout {
@@ -205,8 +239,8 @@ export component TimeChart inherits Rectangle {
                 font-weight: 600;
             }
 
-            Label {
-                text: "計画";
+            if !root.compact: Label {
+                text: root.unplaced-count > 0 ? "計画 ・ 未配置 " + root.unplaced-count + " 件" : "計画";
                 text-color: Theme.mute;
                 font-size: Theme.fs-2xs;
                 mono: true;
@@ -218,7 +252,7 @@ export component TimeChart inherits Rectangle {
 
             TextButton {
                 focusable: true;
-                text: "いまから順に並べる";
+                text: root.compact ? "順に並べる" : "いまから順に並べる";
                 mono: false;
                 bordered: true;
                 clicked => {
@@ -239,154 +273,78 @@ export component TimeChart inherits Rectangle {
 
         HLine { }
 
-        if root.compact: Rectangle {
-            // 狭いときは、未配置を横に並べて上に置く
-            height: root.unplaced.length > 0 ? 44px : 0px;
-            clip: true;
-            ScrollView {
-                content-width: unplaced-row.preferred-width;
-                unplaced-row := HorizontalLayout {
-                    padding: 8px;
-                    spacing: 6px;
-                    for t in root.unplaced: UnplacedRow {
-                        width: 160px;
-                        task: t;
-                        open(id) => { root.open(id); }
-                        place(id) => { root.place(id); }
-                    }
-                }
+        if root.rows.length == 0: Rectangle {
+            vertical-stretch: 1;
+            Label {
+                width: 100%;
+                height: 100%;
+                text: "今日のタスクはありません";
+                text-color: Theme.faint;
+                align: center;
             }
         }
 
-        HorizontalLayout {
-            chart-sv := ScrollView {
-                horizontal-stretch: 1;
-                vertical-stretch: 1;
-                changed visible-height => {
-                    if !root.scrolled && self.visible-height > 0px {
-                        root.scrolled = true;
-                        if root.now-slot > 0 {
-                            self.content-y = -max(0px, min(root.now-slot * root.slot-h - 140px, root.slots * root.slot-h + 24px - self.visible-height));
-                        }
+        if root.rows.length > 0: chart-sv := ScrollView {
+            vertical-stretch: 1;
+            content-width: max(self.visible-width, root.label-w + root.slots * root.slot-w + 16px);
+            content-height: root.head-h + root.rows.length * root.row-h + 16px;
+            changed visible-width => {
+                if !root.scrolled && self.visible-width > 0px {
+                    root.scrolled = true;
+                    if root.now-slot > 0 && root.label-w + root.slots * root.slot-w + 16px > self.visible-width {
+                        self.content-x = -max(0px, min(root.now-slot * root.slot-w - 80px, root.label-w + root.slots * root.slot-w + 16px - self.visible-width));
                     }
-                }
-                content-width: self.visible-width;
-                content-height: root.slots * root.slot-h + 24px;
-
-                // 時刻の目盛りと、15 分ごとの横線
-                for i in root.slots: Rectangle {
-                    y: i * root.slot-h;
-                    height: 1px;
-                    x: root.label-w;
-                    width: chart-sv.visible-width - root.label-w - 16px;
-                    background: mod(i, 4) == 0 ? Theme.border : Theme.border.with-alpha(0.35);
-                }
-
-                for h in floor(root.slots / 4): Label {
-                    x: 8px;
-                    y: h * 4 * root.slot-h - 8px;
-                    width: root.label-w - 12px;
-                    height: 16px;
-                    align: right;
-                    text: (root.start-hour + h) + ":00";
-                    text-color: Theme.faint;
-                    font-size: Theme.fs-2xs;
-                    mono: true;
-                }
-
-                // 置く場所。ここへ落とすと、その位置の枠に置く（埋まっていれば空いた次の位置へ詰める）
-                lane := DropArea {
-                    x: root.label-w;
-                    y: 0px;
-                    width: chart-sv.visible-width - root.label-w - 16px;
-                    height: root.slots * root.slot-h;
-
-                    can-drop(event) => {
-                        root.hover-slot = max(0, min(root.slots - 1, floor(event.position.y / root.slot-h)));
-                        event.proposed-action
-                    }
-                    dropped(event) => {
-                        root.drop-payload(Bridge.payload-text(event.data), root.hover-slot, root.grab);
-                        root.grab = 0;
-                        root.hover-slot = -1;
-                        event.proposed-action
-                    }
-
-                    // 落とす位置の目印
-                    if lane.has-drag && root.hover-slot >= 0: Rectangle {
-                        y: max(0, root.hover-slot - root.grab) * root.slot-h;
-                        height: 2 * root.slot-h;
-                        background: Theme.accent.with-alpha(0.12);
-                        border-width: 1px;
-                        border-color: Theme.accent;
-                        border-radius: 4px;
-                    }
-
-                    for b in root.blocks: PlanBlockView {
-                        x: 2px;
-                        y: b.start-slot * root.slot-h + 1px;
-                        width: lane.width - 4px;
-                        block: b;
-                        slot-h: root.slot-h;
-                        open(id) => { root.open(id); }
-                        resize(id, n) => { root.resize(id, n); }
-                        move-by(id, d) => { root.move-by(id, d); }
-                        resize-by(id, d) => { root.resize-by(id, d); }
-                        remove(id) => { root.remove(id); }
-                        grabbed(n) => { root.grab = n; }
-                    }
-                }
-
-                // いまの時刻
-                if root.now-slot >= 0: Rectangle {
-                    x: root.label-w - 4px;
-                    y: root.now-slot * root.slot-h - 1px;
-                    width: chart-sv.visible-width - root.label-w - 12px;
-                    height: 2px;
-                    background: Theme.high;
                 }
             }
 
-            if !root.compact: Rectangle {
-                width: 240px;
-                background: Theme.panel;
-                Rectangle {
-                    x: 0;
-                    width: 1px;
-                    background: Theme.border;
-                }
+            // 時間軸の縦線（1 時間ごとは濃く、30 分は薄く）と時刻
+            for i in floor(root.slots / 2) + 1: Rectangle {
+                x: root.label-w + i * 2 * root.slot-w;
+                y: root.head-h - 6px;
+                width: 1px;
+                height: root.rows.length * root.row-h + 6px;
+                background: mod(i, 2) == 0 ? Theme.border : Theme.border.with-alpha(0.35);
+            }
 
-                VerticalLayout {
-                    padding: 12px;
-                    spacing: 8px;
-                    Label {
-                        text: "未配置 " + root.unplaced.length;
-                        text-color: Theme.faint;
-                        font-size: Theme.fs-2xs;
-                        mono: true;
-                        letter-spacing: 1.1px;
-                    }
+            for h in floor(root.slots / 4): Label {
+                x: root.label-w + h * 4 * root.slot-w + 3px;
+                y: 4px;
+                width: 4 * root.slot-w - 4px;
+                height: 18px;
+                text: root.start-hour + h;
+                text-color: Theme.faint;
+                font-size: Theme.fs-2xs;
+                mono: true;
+            }
 
-                    if root.unplaced.length == 0: Label {
-                        text: "今日のタスクは、すべて置きました";
-                        text-color: Theme.faint;
-                        font-size: Theme.fs-2xs;
-                    }
+            for r[i] in root.rows: PlanRow {
+                x: 0;
+                y: root.head-h + i * root.row-h;
+                width: root.label-w + root.slots * root.slot-w;
+                height: root.row-h;
+                item: r;
+                slots: root.slots;
+                label-w: root.label-w;
+                slot-w: root.slot-w;
+                alt: mod(i, 2) == 1;
+                compact: root.compact;
+                pin-x: -chart-sv.content-x;
+                open(id) => { root.open(id); }
+                place(id, s) => { root.place(id, s); }
+                place-now(id) => { root.place-now(id); }
+                resize(id, n) => { root.resize(id, n); }
+                move-by(id, d) => { root.move-by(id, d); }
+                resize-by(id, d) => { root.resize-by(id, d); }
+                remove(id) => { root.remove(id); }
+            }
 
-                    ScrollView {
-                        vertical-stretch: 1;
-                        content-width: self.visible-width;
-                        VerticalLayout {
-                            spacing: 6px;
-                            alignment: start;
-                            for t in root.unplaced: UnplacedRow {
-                                task: t;
-                                open(id) => { root.open(id); }
-                                place(id) => { root.place(id); }
-                            }
-                        }
-                    }
-                }
+            // いまの時刻
+            if root.now-slot >= 0: Rectangle {
+                x: root.label-w + root.now-slot * root.slot-w - 1px;
+                y: root.head-h - 8px;
+                width: 2px;
+                height: root.rows.length * root.row-h + 8px;
+                background: Theme.high;
             }
         }
     }

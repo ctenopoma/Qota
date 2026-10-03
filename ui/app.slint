@@ -2,7 +2,7 @@
 import { Palette } from "std-widgets.slint";
 import { Theme, Bridge } from "theme.slint";
 import { Label, TextButton } from "widgets.slint";
-import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanBlockItem } from "types.slint";
+import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanRowItem } from "types.slint";
 import { Sidebar } from "sidebar.slint";
 import { TaskTable } from "task-table.slint";
 import { TimeChart } from "timechart.slint";
@@ -10,7 +10,7 @@ import { TaskDetail } from "task-detail.slint";
 import { SettingsPage, CommandPalette, ConfirmDialog } from "pages.slint";
 import { UpcomingView, ProjectsView, TagsView, CalendarView, DayDialog, SearchPanel, NotifPanel } from "views.slint";
 
-export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanBlockItem }
+export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanRowItem }
 
 export component AppWindow inherits Window {
     title: "Qota";
@@ -43,8 +43,8 @@ export component AppWindow inherits Window {
     in-out property <bool> hint-dismissed;
     // 今日をタイムチャートで見ているか（ui-state.json に残す）
     in-out property <bool> today-chart;
-    in property <[PlanBlockItem]> plan-blocks;
-    in property <[TaskItem]> plan-unplaced;
+    in property <[PlanRowItem]> plan-rows;
+    in property <int> plan-unplaced-count;
     in property <int> chart-slots;
     in property <int> chart-start-hour;
     in property <float> chart-now-slot: -1;
@@ -52,8 +52,8 @@ export component AppWindow inherits Window {
     in property <int> day-start-hour: 6;
     in property <int> day-end-hour: 24;
     callback set-day-range(start: int, end: int);
-    callback plan-drop(payload: string, slot: int, grab: int);
-    callback plan-place(task-id: string);
+    callback plan-place(task-id: string, slot: int);
+    callback plan-place-now(task-id: string);
     callback plan-arrange();
     callback plan-resize(id: string, len-slots: int);
     callback plan-move-by(id: string, delta-slots: int);
@@ -517,14 +517,14 @@ export component AppWindow inherits Window {
                     horizontal-stretch: 1;
 
                     if root.view == "today" && root.today-chart: TimeChart {
-                    blocks: root.plan-blocks;
-                    unplaced: root.plan-unplaced;
+                    rows: root.plan-rows;
+                    unplaced-count: root.plan-unplaced-count;
                     slots: root.chart-slots;
                     start-hour: root.chart-start-hour;
                     now-slot: root.chart-now-slot;
                     compact: root.compact;
-                    drop-payload(p, slot, grab) => { root.plan-drop(p, slot, grab); }
-                    place(id) => { root.plan-place(id); }
+                    place(id, slot) => { root.plan-place(id, slot); }
+                    place-now(id) => { root.plan-place-now(id); }
                     arrange => { root.plan-arrange(); }
                     open(id) => { root.open-task(id); }
                     resize(id, n) => { root.plan-resize(id, n); }

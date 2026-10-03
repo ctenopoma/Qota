@@ -46,9 +46,8 @@ struct App {
     search_results: Rc<VecModel<TaskItem>>,
     notif_overdue: Rc<VecModel<TaskItem>>,
     notif_today: Rc<VecModel<TaskItem>>,
-    // 今日のタイムチャート: 計画の棒と、まだ置いていないタスク
-    plan_blocks: Rc<VecModel<PlanBlockItem>>,
-    plan_unplaced: Rc<VecModel<TaskItem>>,
+    // 今日のタイムチャート: 今日のタスク 1 件につき 1 行
+    plan_rows: Rc<VecModel<PlanRowItem>>,
     // カレンダーで表示中の年月と、一覧を開いている日
     cal_month: Cell<(i32, i32)>,
     open_day: Cell<Option<(i32, i32, i32)>>,
@@ -140,7 +139,7 @@ impl App {
         view::sync(&self.active, active.iter().map(|t| view::task_item(t, &data, &expanded)).collect());
         view::sync(&self.done, done.iter().map(|t| view::task_item(t, &data, &expanded)).collect());
         if route == "today" {
-            self.sync_chart(&data, &active);
+            self.sync_chart(&data, &visible);
         }
 
         view::sync(
@@ -524,36 +523,33 @@ impl App {
         }
     }
 
-    /// 今日のタイムチャート用のモデルと時間軸を組み直す
-    fn sync_chart(&self, data: &AppData, active: &[&Task]) {
+    /// 今日のタイムチャート用の行（今日のタスク 1 件につき 1 行。今日の一覧と同じ並び）と時間軸を組み直す
+    fn sync_chart(&self, data: &AppData, tasks: &[&Task]) {
         let ui = self.ui();
         let day = plan::Day::from_settings(&data.settings);
         let today = self.today.get().format("%Y-%m-%d").to_string();
         let slot = plan::SLOT as i32;
-        let mut blocks = Vec::new();
-        for b in data.plans.iter().filter(|b| b.date == today) {
-            let Some(t) = data.tasks.iter().find(|t| t.id == b.task_id) else { continue };
+        let mut unplaced = 0;
+        let rows: Vec<PlanRowItem> = tasks.iter().map(|t| {
             // 時間軸の外にある棒（軸の範囲を狭めたとき）は出さない。データは残す
-            if b.start_min < day.start || b.start_min + b.duration_min > day.end {
-                continue;
-            }
-            blocks.push(PlanBlockItem {
-                id: b.id.as_str().into(),
-                task_id: b.task_id.as_str().into(),
-                title: t.title.as_str().into(),
-                start_slot: (b.start_min - day.start) as i32 / slot,
-                len_slots: b.duration_min as i32 / slot,
-                done: t.status == TaskStatus::Done,
+            let block = data.plans.iter().find(|b| {
+                b.date == today && b.task_id == t.id
+                    && b.start_min >= day.start && b.start_min + b.duration_min <= day.end
             });
-        }
-        let placed: HashSet<&str> = data.plans.iter().filter(|b| b.date == today).map(|b| b.task_id.as_str()).collect();
-        let none = HashSet::new();
-        let unplaced: Vec<TaskItem> = active.iter()
-            .filter(|t| !placed.contains(t.id.as_str()))
-            .map(|t| view::task_item(t, data, &none))
-            .collect();
-        view::sync(&self.plan_blocks, blocks);
-        view::sync(&self.plan_unplaced, unplaced);
+            if block.is_none() && t.status != TaskStatus::Done {
+                unplaced += 1;
+            }
+            PlanRowItem {
+                task_id: t.id.as_str().into(),
+                title: t.title.as_str().into(),
+                done: t.status == TaskStatus::Done,
+                block_id: block.map(|b| b.id.as_str()).unwrap_or("").into(),
+                start_slot: block.map(|b| (b.start_min - day.start) as i32 / slot).unwrap_or(0),
+                len_slots: block.map(|b| b.duration_min as i32 / slot).unwrap_or(0),
+            }
+        }).collect();
+        view::sync(&self.plan_rows, rows);
+        ui.set_plan_unplaced_count(unplaced);
         ui.set_chart_slots(((day.end - day.start) / plan::SLOT) as i32);
         ui.set_chart_start_hour((day.start / 60) as i32);
         ui.set_day_start_hour(data.settings.day_start_hour as i32);
@@ -816,8 +812,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         search_results: Rc::new(VecModel::default()),
         notif_overdue: Rc::new(VecModel::default()),
         notif_today: Rc::new(VecModel::default()),
-        plan_blocks: Rc::new(VecModel::default()),
-        plan_unplaced: Rc::new(VecModel::default()),
+        plan_rows: Rc::new(VecModel::default()),
         cal_month: Cell::new({
             let t = view::today();
             (t.year(), t.month() as i32)
@@ -861,8 +856,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_search_results(app.search_results.clone().into());
     ui.set_notif_overdue(app.notif_overdue.clone().into());
     ui.set_notif_today(app.notif_today.clone().into());
-    ui.set_plan_blocks(app.plan_blocks.clone().into());
-    ui.set_plan_unplaced(app.plan_unplaced.clone().into());
+    ui.set_plan_rows(app.plan_rows.clone().into());
     ui.set_data_path(app.state.path.to_string_lossy().as_ref().into());
 
     let bridge = ui.global::<Bridge>();
@@ -1004,22 +998,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     // ───── time chart ─────
-    on!(on_plan_drop, |a, payload, slot, grab| {
-        // 棒を動かすときは、つかんだ位置の分だけ上端を戻す（未配置から落とすときは、ポインタの位置が上端）
-        let slot = if payload.starts_with("block:") { slot - grab } else { slot };
+    on!(on_plan_place, |a, id, slot| {
+        // 行の時間軸をクリックした位置に棒を置く（棒があれば、その位置へ動かす）
         let (date, desired) = a.plan_target(slot);
-        if let Some(id) = payload.strip_prefix("task:") {
-            let id = id.to_string();
-            a.mutate(
-                |d| format!("{}を計画に置く", task_label(d, &id)),
-                |s| plan::place_task(s, &id, &date, desired, plan::DEFAULT_LEN),
-            );
-        } else if let Some(id) = payload.strip_prefix("block:") {
-            let id = id.to_string();
-            a.mutate(|_| "計画の棒の移動".into(), |s| plan::move_block(s, &id, desired));
-        }
+        let id = id.to_string();
+        a.mutate(
+            |d| format!("{}を計画に置く", task_label(d, &id)),
+            |s| plan::place_task(s, &id, &date, desired, plan::DEFAULT_LEN),
+        );
     });
-    on!(on_plan_place, |a, id| {
+    on!(on_plan_place_now, |a, id| {
         let date = a.today.get().format("%Y-%m-%d").to_string();
         let from = a.now_rounded_min();
         let id = id.to_string();
@@ -1031,7 +1019,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     on!(on_plan_arrange, |a| {
         let date = a.today.get().format("%Y-%m-%d").to_string();
         let from = a.now_rounded_min();
-        let ids: Vec<String> = a.plan_unplaced.iter().map(|t| t.id.to_string()).collect();
+        // まだ棒の無い、完了していないタスクを、行の並びのまま順に置く
+        let ids: Vec<String> = a.plan_rows.iter()
+            .filter(|r| r.block_id.is_empty() && !r.done)
+            .map(|r| r.task_id.to_string())
+            .collect();
         if ids.is_empty() {
             return;
         }
