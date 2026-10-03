@@ -109,10 +109,6 @@ impl App {
                         || (view::is_overdue(t.due.as_deref()) && t.status != TaskStatus::Done))
                     .collect(),
             ),
-            "inbox" => (
-                "受信箱".into(),
-                data.tasks.iter().filter(|t| t.project_id.is_none()).collect(),
-            ),
             "project" => (
                 data.projects.iter()
                     .find(|p| p.id == pid.as_str())
@@ -133,7 +129,6 @@ impl App {
         let (done, active): (Vec<&Task>, Vec<&Task>) =
             visible.iter().partition(|t| t.status == TaskStatus::Done);
         let subtitle = match route.as_str() {
-            "inbox" => "プロジェクト未割当".to_string(),
             "project" => format!("{} 件", active.len()),
             _ => String::new(),
         };
@@ -159,7 +154,7 @@ impl App {
                 .count() as i32,
         );
 
-        let mut options: Vec<SharedString> = vec!["受信箱".into()];
+        let mut options: Vec<SharedString> = vec!["なし".into()];
         options.extend(data.projects.iter().map(|p| SharedString::from(p.name.as_str())));
         ui.set_project_options(ModelRc::new(VecModel::from(options)));
 
@@ -464,7 +459,7 @@ impl App {
         }
     }
 
-    /// コピーしたタスクを今の画面に貼り付ける。今日なら期日を今日に、受信箱ならプロジェクトなしに、
+    /// コピーしたタスクを今の画面に貼り付ける。今日なら期日を今日に、
     /// プロジェクトの画面ならそのプロジェクトにする。ほかの画面ではコピー元と同じ
     fn paste_task(&self) {
         if !self.clipboard_has_task() {
@@ -474,7 +469,6 @@ impl App {
         let (view, pid) = self.route();
         match view.as_str() {
             "today" => task.due = Some(self.today.get().format("%Y-%m-%d").to_string()),
-            "inbox" => task.project_id = None,
             "project" => task.project_id = Some(pid.to_string()),
             _ => {}
         }
@@ -531,7 +525,6 @@ impl App {
         };
         let mut items = vec![
             cmd("→ 今日", "画面", "today", ""),
-            cmd("→ 受信箱", "画面", "inbox", ""),
             cmd("→ 今後", "画面", "upcoming", ""),
             cmd("→ カレンダー", "画面", "calendar", ""),
             cmd("→ プロジェクト一覧", "画面", "projects", ""),
@@ -867,7 +860,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     on!(on_add_task, |a, title| {
         let ui = a.ui();
         let project_id = (ui.get_view() == "project").then(|| ui.get_project_id().to_string());
-        // 今日ビューで追加したものは期日を今日にする（期日なしだと今日ビューに出ず、受信箱へ行ってしまう）
+        // 今日ビューで追加したものは期日を今日にする（期日なしだと今日ビューに出ず、追加したのに見えなくなってしまう）
         let due = (ui.get_view() == "today").then(|| view::today().format("%Y-%m-%d").to_string());
         if !title.trim().is_empty() {
             a.mutate(
@@ -964,7 +957,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let place = pid.as_ref()
                 .and_then(|p| d.projects.iter().find(|x| &x.id == p))
                 .map(|p| quoted(&p.name))
-                .unwrap_or_else(|| "受信箱".into());
+                .unwrap_or_else(|| "プロジェクトなし".into());
             (task_label(&d, &id), place)
         };
         let moved = a.state.data.lock().tasks.iter().any(|t| t.id == id.as_str() && t.project_id != pid);
@@ -1195,7 +1188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.invoke_palette_query(SharedString::new());
             ui.set_palette_open(true);
         }
-        Ok(v @ ("settings" | "upcoming" | "calendar" | "projects" | "tags" | "inbox")) => {
+        Ok(v @ ("settings" | "upcoming" | "calendar" | "projects" | "tags")) => {
             ui.invoke_navigate(v.into(), SharedString::new())
         }
         Ok("search") => {

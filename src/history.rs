@@ -130,17 +130,17 @@ mod tests {
         let mut n = NavStack::default();
         n.visit("today");
         n.visit("deleted-project");
-        n.visit("inbox");
-        // 今は settings。戻ると inbox、次は削除済みを飛ばして today
+        n.visit("upcoming");
+        // 今は settings。戻ると upcoming、次は削除済みを飛ばして today
         let valid = |r: &&str| *r != "deleted-project";
-        assert_eq!(n.back("settings", valid), Some("inbox"));
-        assert_eq!(n.back("inbox", valid), Some("today"));
+        assert_eq!(n.back("settings", valid), Some("upcoming"));
+        assert_eq!(n.back("upcoming", valid), Some("today"));
         assert_eq!(n.back("today", valid), None);
-        assert_eq!(n.forward("today", valid), Some("inbox"));
-        assert_eq!(n.forward("inbox", valid), Some("settings"));
+        assert_eq!(n.forward("today", valid), Some("upcoming"));
+        assert_eq!(n.forward("upcoming", valid), Some("settings"));
         // 新しく移ると進む履歴は消える
         n.back("settings", valid);
-        n.visit("inbox");
+        n.visit("upcoming");
         assert_eq!(n.forward("tags", valid), None);
     }
 }

@@ -192,14 +192,6 @@ export component Sidebar inherits Rectangle {
                     }
 
                     NavButton {
-                        text: "受信箱";
-                        active: root.view == "inbox";
-                        clicked => {
-                            root.navigate("inbox", "");
-                        }
-                    }
-
-                    NavButton {
                         text: "今後";
                         active: root.view == "upcoming";
                         clicked => {
