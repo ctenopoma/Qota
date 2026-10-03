@@ -389,6 +389,7 @@ export component AppWindow inherits Window {
                     }
 
                     if root.view == "calendar": CalendarView {
+                    compact: root.compact;
                         title: root.cal-title;
                         monday-first: root.cal-monday-first;
                         cells: root.cal-cells;

@@ -886,6 +886,8 @@ component TaskChip inherits Rectangle {
 }
 
 export component CalendarView inherits Rectangle {
+    // mini モードではセルが低いので、チップの代わりに件数を出す（タップで日の一覧が開く）
+    in property <bool> compact;
     in property <string> title;
     in property <bool> monday-first;
     in property <[CalCell]> cells;
@@ -936,7 +938,15 @@ export component CalendarView inherits Rectangle {
 
         HLine { }
 
-        VerticalLayout {
+        // 低いウィンドウでは月の下の週が切れるので、足りないときはスクロールする
+        cal-sv := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            content-height: max(self.visible-height, cal-body.preferred-height);
+
+            cal-body := VerticalLayout {
+            width: cal-sv.visible-width;
+            height: max(cal-sv.visible-height, self.preferred-height);
             padding: 16px;
             spacing: 4px;
             HorizontalLayout {
@@ -954,8 +964,9 @@ export component CalendarView inherits Rectangle {
             grid := Rectangle {
                 property <int> rows: ceil(root.cells.length / 7);
                 property <length> cell-w: (self.width - 1px) / 7;
-                property <length> cell-h: max(80px, (self.height - 1px) / max(1, self.rows));
+                property <length> cell-h: max(56px, (self.height - 1px) / max(1, self.rows));
                 vertical-stretch: 1;
+                min-height: self.rows * 56px + 1px;
                 background: Theme.border;
                 clip: true;
 
@@ -998,11 +1009,23 @@ export component CalendarView inherits Rectangle {
                                 }
                             }
 
-                            for t in c.tasks: TaskChip {
-                                task: t;
-                                open(id) => { root.open(id); }
+                            if root.compact && c.tasks.length + c.more > 0: Label {
+                                text: c.tasks.length + c.more;
+                                text-color: Theme.mute;
+                                font-size: Theme.fs-2xs;
+                                font-weight: 600;
+                                mono: true;
+                                align: center;
                             }
-                            if c.more > 0: Label {
+
+                            if !root.compact: VerticalLayout {
+                                spacing: 4px;
+                                for t in c.tasks: TaskChip {
+                                    task: t;
+                                    open(id) => { root.open(id); }
+                                }
+                            }
+                            if !root.compact && c.more > 0: Label {
                                 text: "+ " + c.more + " 件";
                                 text-color: Theme.mute;
                                 font-size: Theme.fs-2xs;
@@ -1013,6 +1036,7 @@ export component CalendarView inherits Rectangle {
                     }
                 }
             }
+        }
         }
     }
 }
