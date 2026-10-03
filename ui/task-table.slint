@@ -92,6 +92,8 @@ component PriorityButton inherits Rectangle {
 
 export component TaskRow inherits Rectangle {
     in property <TaskItem> task;
+    // 狭いウィンドウ（mini モード）では、プロジェクト・タグのバッジを隠してタイトルに幅を回す
+    in property <bool> compact;
     callback open(id: string);
     callback toggle(id: string);
     callback toggle-expanded(id: string);
@@ -182,7 +184,7 @@ export component TaskRow inherits Rectangle {
                     }
                 }
 
-                HorizontalLayout {
+                if !root.compact: HorizontalLayout {
                     // 間隔は各要素の左余白で取る（2 個を超えて隠したタグが間隔だけ残さないように）
                     spacing: 0px;
                     alignment: end;
@@ -297,6 +299,7 @@ export component TaskRow inherits Rectangle {
 }
 
 export component TaskTable inherits Rectangle {
+    in property <bool> compact;
     in property <string> title;
     in property <string> subtitle;
     in property <[TaskItem]> active;
@@ -401,6 +404,7 @@ export component TaskTable inherits Rectangle {
                 }
 
                 for t in root.active: TaskRow {
+                    compact: root.compact;
                     task: t;
                     open(id) => { root.open(id); }
                     toggle(id) => { root.toggle(id); }
@@ -437,6 +441,7 @@ export component TaskTable inherits Rectangle {
                     if root.archive-open: VerticalLayout {
                         for t in root.done: TaskRow {
                             opacity: 0.6;
+                            compact: root.compact;
                             task: t;
                             open(id) => { root.open(id); }
                             toggle(id) => { root.toggle(id); }

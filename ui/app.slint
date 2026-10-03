@@ -16,8 +16,9 @@ export component AppWindow inherits Window {
     icon: @image-url("../assets/128x128.png");
     preferred-width: 1280px;
     preferred-height: 820px;
-    min-width: 880px;
-    min-height: 600px;
+    // 幅 720px 未満は mini モード（サイドバーを上部バーとドロワーに替える）
+    min-width: 360px;
+    min-height: 420px;
     background: Theme.bg;
     default-font-family: Theme.sans;
     default-font-size: Theme.fs-sm;
@@ -26,6 +27,13 @@ export component AppWindow inherits Window {
     in-out property <string> view: "today";
     in-out property <string> project-id;
     in-out property <bool> sidebar-open: true;
+    // 幅から束縛で求めるとレイアウトの計算と循環するので、changed で更新する
+    in-out property <bool> compact: false;
+    changed width => {
+        root.compact = root.width < 720px;
+    }
+    // mini モードでサイドバー（ドロワー）を開いているか
+    in-out property <bool> drawer-open;
 
     // ───── list ─────
     in property <string> list-title;
@@ -251,18 +259,205 @@ export component AppWindow inherits Window {
             }
         }
 
-        HorizontalLayout {
+        VerticalLayout {
+            if root.compact: Rectangle {
+                height: 44px;
+                background: Theme.panel;
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.border;
+                }
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 8px;
+                    TextButton {
+                        text: "メニュー";
+                        bordered: true;
+                        mono: false;
+                        clicked => {
+                            root.drawer-open = true;
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    TextButton {
+                        text: "検索";
+                        bordered: true;
+                        mono: false;
+                        clicked => {
+                            root.open-search();
+                        }
+                    }
+
+                    TextButton {
+                        text: root.overdue-count > 0 ? "通知 " + root.overdue-count : "通知";
+                        bordered: true;
+                        mono: false;
+                        text-color: root.overdue-count > 0 ? Theme.high : Theme.mute;
+                        clicked => {
+                            root.notif-open = true;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                if !root.compact: Sidebar {
+                    width: root.sidebar-open ? 220px : 60px;
+                    open: root.sidebar-open;
+                    view: root.view;
+                    project-id: root.project-id;
+                    projects: root.projects;
+                    overdue-count: root.overdue-count;
+                    navigate(v, p) => {
+                        root.navigate(v, p);
+                    }
+                    command => {
+                        root.open-palette();
+                    }
+                    toggle-open => {
+                        root.sidebar-open = !root.sidebar-open;
+                    }
+                    add-project(name) => {
+                        root.add-project(name);
+                    }
+                    search => {
+                        root.open-search();
+                    }
+                    notif => {
+                        root.notif-open = true;
+                    }
+                    move-project(payload, before) => {
+                        root.move-project(payload, before);
+                    }
+                }
+
+                Rectangle {
+                    horizontal-stretch: 1;
+
+                    if root.view == "today" || root.view == "inbox" || root.view == "project": TaskTable {
+                        compact: root.compact;
+                        title: root.list-title;
+                        subtitle: root.list-subtitle;
+                        active: root.active-tasks;
+                        done: root.done-tasks;
+                        archive-open <=> root.archive-open;
+                        sortable: root.view == "today";
+                        sort-index <=> root.today-sort;
+                        sort-changed => { root.sort-changed(); }
+                        add-task(t) => { root.add-task(t); }
+                        open(id) => { root.open-task(id); }
+                        toggle(id) => { root.toggle-task(id); }
+                        toggle-expanded(id) => { root.toggle-expanded(id); }
+                        set-priority(id, p) => { root.set-priority(id, p); }
+                        set-due(id, y, m, d) => { root.set-due(id, y, m, d); }
+                        clear-due(id) => { root.clear-due(id); }
+                        duplicate(id) => { root.duplicate-task(id); }
+                        delete(id) => { root.delete-task(id); }
+                        toggle-subtask(tid, sid) => { root.toggle-subtask(tid, sid); }
+                    }
+
+                    if root.view == "settings": SettingsPage {
+                        dark: Theme.dark;
+                        data-path: root.data-path;
+                        set-dark(d) => {
+                            root.set-dark(d);
+                            Palette.color-scheme = d ? ColorScheme.dark : ColorScheme.light;
+                        }
+                        export-json => { root.export-json(); }
+                        import-json => { root.import-json(); }
+                        latest-backup: root.latest-backup;
+                        restore-backup => { root.restore-backup(); }
+                        open-backups => { root.open-backups(); }
+                        reset => { root.reset-data(); }
+                    }
+
+                    if root.view == "upcoming": UpcomingView {
+                        columns: root.columns;
+                        open(id) => { root.open-task(id); }
+                        toggle(id) => { root.toggle-task(id); }
+                        toggle-expanded(id) => { root.toggle-expanded(id); }
+                        toggle-subtask(tid, sid) => { root.toggle-subtask(tid, sid); }
+                    }
+
+                    if root.view == "calendar": CalendarView {
+                        title: root.cal-title;
+                        monday-first: root.cal-monday-first;
+                        cells: root.cal-cells;
+                        shift(d) => { root.cal-shift(d); }
+                        go-today => { root.cal-today(); }
+                        open-day(y, m, d) => { root.open-day(y, m, d); }
+                        open(id) => { root.open-task(id); }
+                    }
+
+                    if root.view == "projects": ProjectsView {
+                        columns: root.columns;
+                        open(id) => { root.open-task(id); }
+                        open-project(id) => { root.navigate("project", id); }
+                        add-project(name, color) => { root.add-project-color(name, color); }
+                        update-project(id, name, color) => { root.update-project(id, name, color); }
+                        delete-project(id) => { root.delete-project(id); }
+                        move-project(payload, before) => { root.move-project(payload, before); }
+                    }
+
+                    if root.view == "tags": TagsView {
+                        columns: root.columns;
+                        open(id) => { root.open-task(id); }
+                        add-tag(name) => { root.add-tag(name); }
+                        delete-tag(id) => { root.delete-tag(id); }
+                    }
+
+                    // 元アプリと同じく、カレンダーの範囲だけを覆う
+                    if root.view == "calendar" && root.day-open: DayDialog {
+                        title: root.day-title;
+                        tasks: root.day-tasks;
+                        close => { root.day-open = false; }
+                        open(id) => {
+                            root.day-open = false;
+                            root.open-task(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // mini モードのサイドバー（ドロワー）
+        if root.compact && root.drawer-open: Rectangle {
+            background: #00000066;
+            TouchArea {
+                clicked => {
+                    root.drawer-open = false;
+                }
+            }
+
+            TouchArea {
+                x: 0px;
+                width: 220px;
+            }
+
             Sidebar {
-                width: root.sidebar-open ? 220px : 60px;
-                open: root.sidebar-open;
+                x: 0px;
+                width: 220px;
+                height: root.height;
+                open: true;
                 view: root.view;
                 project-id: root.project-id;
                 projects: root.projects;
                 overdue-count: root.overdue-count;
                 navigate(v, p) => {
+                    root.drawer-open = false;
                     root.navigate(v, p);
                 }
                 command => {
+                    root.drawer-open = false;
                     root.open-palette();
                 }
                 toggle-open => {
@@ -272,9 +467,11 @@ export component AppWindow inherits Window {
                     root.add-project(name);
                 }
                 search => {
+                    root.drawer-open = false;
                     root.open-search();
                 }
                 notif => {
+                    root.drawer-open = false;
                     root.notif-open = true;
                 }
                 move-project(payload, before) => {
@@ -282,91 +479,6 @@ export component AppWindow inherits Window {
                 }
             }
 
-            Rectangle {
-                horizontal-stretch: 1;
-
-                if root.view == "today" || root.view == "inbox" || root.view == "project": TaskTable {
-                    title: root.list-title;
-                    subtitle: root.list-subtitle;
-                    active: root.active-tasks;
-                    done: root.done-tasks;
-                    archive-open <=> root.archive-open;
-                    sortable: root.view == "today";
-                    sort-index <=> root.today-sort;
-                    sort-changed => { root.sort-changed(); }
-                    add-task(t) => { root.add-task(t); }
-                    open(id) => { root.open-task(id); }
-                    toggle(id) => { root.toggle-task(id); }
-                    toggle-expanded(id) => { root.toggle-expanded(id); }
-                    set-priority(id, p) => { root.set-priority(id, p); }
-                    set-due(id, y, m, d) => { root.set-due(id, y, m, d); }
-                    clear-due(id) => { root.clear-due(id); }
-                    duplicate(id) => { root.duplicate-task(id); }
-                    delete(id) => { root.delete-task(id); }
-                    toggle-subtask(tid, sid) => { root.toggle-subtask(tid, sid); }
-                }
-
-                if root.view == "settings": SettingsPage {
-                    dark: Theme.dark;
-                    data-path: root.data-path;
-                    set-dark(d) => {
-                        root.set-dark(d);
-                        Palette.color-scheme = d ? ColorScheme.dark : ColorScheme.light;
-                    }
-                    export-json => { root.export-json(); }
-                    import-json => { root.import-json(); }
-                    latest-backup: root.latest-backup;
-                    restore-backup => { root.restore-backup(); }
-                    open-backups => { root.open-backups(); }
-                    reset => { root.reset-data(); }
-                }
-
-                if root.view == "upcoming": UpcomingView {
-                    columns: root.columns;
-                    open(id) => { root.open-task(id); }
-                    toggle(id) => { root.toggle-task(id); }
-                    toggle-expanded(id) => { root.toggle-expanded(id); }
-                    toggle-subtask(tid, sid) => { root.toggle-subtask(tid, sid); }
-                }
-
-                if root.view == "calendar": CalendarView {
-                    title: root.cal-title;
-                    monday-first: root.cal-monday-first;
-                    cells: root.cal-cells;
-                    shift(d) => { root.cal-shift(d); }
-                    go-today => { root.cal-today(); }
-                    open-day(y, m, d) => { root.open-day(y, m, d); }
-                    open(id) => { root.open-task(id); }
-                }
-
-                if root.view == "projects": ProjectsView {
-                    columns: root.columns;
-                    open(id) => { root.open-task(id); }
-                    open-project(id) => { root.navigate("project", id); }
-                    add-project(name, color) => { root.add-project-color(name, color); }
-                    update-project(id, name, color) => { root.update-project(id, name, color); }
-                    delete-project(id) => { root.delete-project(id); }
-                    move-project(payload, before) => { root.move-project(payload, before); }
-                }
-
-                if root.view == "tags": TagsView {
-                    columns: root.columns;
-                    open(id) => { root.open-task(id); }
-                    add-tag(name) => { root.add-tag(name); }
-                    delete-tag(id) => { root.delete-tag(id); }
-                }
-
-                // 元アプリと同じく、カレンダーの範囲だけを覆う
-                if root.view == "calendar" && root.day-open: DayDialog {
-                    title: root.day-title;
-                    tasks: root.day-tasks;
-                    close => { root.day-open = false; }
-                    open(id) => {
-                        root.day-open = false;
-                        root.open-task(id);
-                    }
-                }
-            }
         }
 
         if root.detail-open: TaskDetail {
@@ -453,7 +565,7 @@ export component AppWindow inherits Window {
 
         // トースト。詳細パネルが開いているときはその左側、閉じているときは本文の中央下に出す
         if root.toast-text != "": toast := Rectangle {
-            property <length> area-left: root.detail-open ? 0px : (root.sidebar-open ? 220px : 60px);
+            property <length> area-left: root.detail-open || root.compact ? 0px : (root.sidebar-open ? 220px : 60px);
             property <length> area-right: root.detail-open ? root.width - 480px : root.width;
 
             width: min(toast-layout.preferred-width, min(520px, self.area-right - self.area-left - 32px));

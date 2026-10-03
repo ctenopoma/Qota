@@ -68,7 +68,7 @@ export component TaskDetail inherits Rectangle {
 
     panel := Rectangle {
         x: root.width - self.width;
-        width: 480px;
+        width: min(480px, root.width);
         height: root.height;
         background: Theme.panel;
 
@@ -335,13 +335,25 @@ export component TaskDetail inherits Rectangle {
                                         }
 
                                         Label {
-                                            text: "題名・メモなどの変更の範囲。頻度・終了日は以降を作り直します";
+                                            text: "題名・メモなどをどこまで変えるか";
                                             text-color: Theme.mute;
                                             font-size: Theme.fs-2xs;
                                         }
 
                                         Label {
-                                            text: "終了日まで先に作ります（最大 255 件）。空だと繰り返しません";
+                                            text: "頻度・終了日は以降を作り直します";
+                                            text-color: Theme.mute;
+                                            font-size: Theme.fs-2xs;
+                                        }
+
+                                        Label {
+                                            text: "終了日まで先に作ります（最大 255 件）";
+                                            text-color: Theme.mute;
+                                            font-size: Theme.fs-2xs;
+                                        }
+
+                                        Label {
+                                            text: "終了日が空だと繰り返しません";
                                             text-color: Theme.mute;
                                             font-size: Theme.fs-2xs;
                                         }

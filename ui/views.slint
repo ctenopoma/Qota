@@ -1274,7 +1274,7 @@ export component NotifPanel inherits Rectangle {
     panel := Rectangle {
         x: root.width - self.width - 12px;
         y: 12px;
-        width: 320px;
+        width: min(320px, root.width - 24px);
         height: min(panel-layout.preferred-height, root.height - 24px);
         background: Theme.panel;
         border-radius: 8px;

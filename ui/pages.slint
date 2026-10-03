@@ -231,7 +231,7 @@ export component CommandPalette inherits Rectangle {
     box := Rectangle {
         x: (root.width - self.width) / 2;
         y: root.height * 0.2;
-        width: 480px;
+        width: min(480px, root.width - 32px);
         height: box-layout.preferred-height;
         background: Theme.panel;
         border-radius: 8px;
@@ -359,7 +359,7 @@ export component ConfirmDialog inherits Rectangle {
         box := Rectangle {
             x: (root.width - self.width) / 2;
             y: root.height * 0.3;
-            width: 380px;
+            width: min(380px, root.width - 32px);
             height: box-layout.preferred-height;
             background: Theme.panel;
             border-radius: 8px;

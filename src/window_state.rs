@@ -86,6 +86,10 @@ pub fn work_area() -> Option<WorkArea> {
     Some(WorkArea { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top, scale })
 }
 
+/// ウィンドウの最小の大きさ（論理 px）。ui/app.slint の min-width / min-height と揃える
+const MIN_WIDTH: f32 = 360.0;
+const MIN_HEIGHT: f32 = 420.0;
+
 /// 起動時の大きさと位置 (width, height, x, y)。
 /// 前回の大きさ（無ければ論理 1280×820）を作業領域に収まるよう縮め、中央に置く
 pub fn initial_geometry(saved: Option<WindowState>, area: WorkArea) -> (u32, u32, i32, i32) {
@@ -97,8 +101,8 @@ pub fn initial_geometry(saved: Option<WindowState>, area: WorkArea) -> (u32, u32
     };
     // set_size はクライアント領域の大きさなので、タイトルバーと枠の分を残す
     let (frame_w, frame_h) = (px(16.0), px(40.0));
-    let w = w.min(area.width - frame_w).max(px(880.0));
-    let h = h.min(area.height - frame_h).max(px(600.0));
+    let w = w.min(area.width - frame_w).max(px(MIN_WIDTH));
+    let h = h.min(area.height - frame_h).max(px(MIN_HEIGHT));
     let x = area.x + ((area.width - w - frame_w) / 2).max(0);
     let y = area.y + ((area.height - h - frame_h) / 2).max(0);
     (w as u32, h as u32, x, y)
@@ -144,6 +148,6 @@ mod tests {
     fn never_smaller_than_min_size() {
         let saved = WindowState { width: 100, height: 100, maximized: false };
         let (w, h, _, _) = initial_geometry(Some(saved), AREA);
-        assert_eq!((w, h), (1760, 1200));
+        assert_eq!((w, h), (720, 840)); // 論理 360×420 の 200%
     }
 }
