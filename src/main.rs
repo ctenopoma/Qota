@@ -324,6 +324,7 @@ impl App {
         self.update_now_line();
         let t = view::today();
         if t != self.today.get() {
+            self.freeze_plans(t);
             self.today.set(t);
             set_bridge_today(&self.ui(), t);
             self.refresh();
@@ -432,8 +433,17 @@ impl App {
             let done = d.tasks.iter().any(|t| t.id == id && t.status == TaskStatus::Done);
             format!("{}の{}", task_label(d, id), if done { "完了解除" } else { "完了" })
         };
-        // 完了は一覧で見て分かるので通知は出さない（戻すときは Ctrl+Z）
-        self.mutate(label, |s| tasks::toggle_task(s, id));
+        // 完了は一覧で見て分かるので通知は出さない（戻すときは Ctrl+Z）。
+        // 計画の最中か直後の完了なら、完了した時刻をタイムチャートの実績の終わりにする（同じ「元に戻す」で戻る）
+        let date = self.today.get().format("%Y-%m-%d").to_string();
+        let now = self.now_min();
+        self.mutate(label, |s| {
+            let t = tasks::toggle_task(s, id)?;
+            if t.status == TaskStatus::Done {
+                plan::record_completion(s, id, &date, now)?;
+            }
+            Ok(t)
+        });
     }
 
     /// マウスが乗っているタスク、なければ開いている詳細のタスクをコピーする
@@ -523,6 +533,14 @@ impl App {
         }
     }
 
+    /// 今日より前の計画で、実績の無いものを「予定どおり」として残す（日が替わるときと、起動時）
+    fn freeze_plans(&self, today: NaiveDate) {
+        let today = today.format("%Y-%m-%d").to_string();
+        if let Err(e) = plan::freeze_before(&self.state, &today) {
+            eprintln!("failed to freeze plans: {e}");
+        }
+    }
+
     /// 今日のタイムチャート用の行（今日のタスク 1 件につき 1 行。今日の一覧と同じ並び）と時間軸を組み直す
     fn sync_chart(&self, data: &AppData, tasks: &[&Task]) {
         let ui = self.ui();
@@ -530,6 +548,7 @@ impl App {
         let today = self.today.get().format("%Y-%m-%d").to_string();
         let slot = plan::SLOT as i32;
         let mut unplaced = 0;
+        let now_min = self.now_min();
         let rows: Vec<PlanRowItem> = tasks.iter().map(|t| {
             // 時間軸の外にある棒（軸の範囲を狭めたとき）は出さない。データは残す
             let block = data.plans.iter().find(|b| {
@@ -539,6 +558,24 @@ impl App {
             if block.is_none() && t.status != TaskStatus::Done {
                 unplaced += 1;
             }
+            // 実績: 記録があればそれ、無ければ「予定どおり」。計画の開始を過ぎていれば、いまの時刻（計画の終わりまで）まで進む
+            let (a_kind, a_s, a_e) = match block {
+                None => (0, 0, 0),
+                Some(b) => match data.actuals.iter().find(|a| a.date == today && a.task_id == t.id) {
+                    Some(a) => (3, a.start_min, a.end_min),
+                    None if now_min >= b.start_min => {
+                        let end = b.start_min + b.duration_min;
+                        if t.status == TaskStatus::Done || now_min >= end {
+                            (2, b.start_min, end)
+                        } else {
+                            (1, b.start_min, now_min)
+                        }
+                    }
+                    None => (0, 0, 0),
+                },
+            };
+            // 時間軸の外に出る実績は出さない
+            let a_kind = if a_kind != 0 && (a_s < day.start || a_e > day.end) { 0 } else { a_kind };
             PlanRowItem {
                 task_id: t.id.as_str().into(),
                 title: t.title.as_str().into(),
@@ -546,6 +583,9 @@ impl App {
                 block_id: block.map(|b| b.id.as_str()).unwrap_or("").into(),
                 start_slot: block.map(|b| (b.start_min - day.start) as i32 / slot).unwrap_or(0),
                 len_slots: block.map(|b| b.duration_min as i32 / slot).unwrap_or(0),
+                a_kind,
+                a_start: if a_kind != 0 { (a_s - day.start) as f32 / plan::SLOT as f32 } else { 0.0 },
+                a_len: if a_kind != 0 { (a_e - a_s) as f32 / plan::SLOT as f32 } else { 0.0 },
             }
         }).collect();
         view::sync(&self.plan_rows, rows);
@@ -577,6 +617,12 @@ impl App {
         let day = plan::Day::from_settings(&self.state.data.lock().settings);
         let date = self.today.get().format("%Y-%m-%d").to_string();
         (date, day.start + slot.max(0) as u16 * plan::SLOT)
+    }
+
+    /// いまの時刻（0 時からの分）
+    fn now_min(&self) -> u16 {
+        let now = Local::now();
+        now.hour() as u16 * 60 + now.minute() as u16
     }
 
     /// いまの時刻（15 分単位に切り上げ。0 時からの分）
@@ -790,6 +836,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (w, h, x, y) = window_state::initial_geometry(saved_window, area);
         ui.window().set_size(slint::PhysicalSize::new(w, h));
         ui.window().set_position(slint::PhysicalPosition::new(x, y));
+        // 起動時にすでに狭いと、幅の変化を拾う側（app.slint の changed width）が働かないことがあるので、ここで判定する
+        ui.set_compact((w as f32 / area.scale) < 720.0);
     }
     if saved_window.is_some_and(|s| s.maximized) {
         ui.window().set_maximized(true);
@@ -1046,6 +1094,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cur = s.data.lock().plans.iter().find(|b| b.id == id).map(|b| b.duration_min as i32).unwrap_or(plan::SLOT as i32);
             plan::resize_block(s, &id, (cur + d * plan::SLOT as i32).max(plan::SLOT as i32) as u16)
         });
+    });
+    on!(on_actual_stop, |a, id| {
+        // 「終了」: 実績の終わりをいまにする（タスクは完了にしない。休憩や割り込みで止めるとき）
+        let date = a.today.get().format("%Y-%m-%d").to_string();
+        let now = a.now_min();
+        let id = id.to_string();
+        a.mutate(|d| format!("{}の実績を終える", task_label(d, &id)), |s| plan::stop_actual(s, &id, &date, now));
+    });
+    on!(on_actual_set, |a, id, start_slot, end_slot| {
+        // 実績の棒をドラッグして直した。枠（小数）を 0 時からの分にする
+        let day = plan::Day::from_settings(&a.state.data.lock().settings);
+        let date = a.today.get().format("%Y-%m-%d").to_string();
+        let to_min = |slot: f32| day.start as i32 + (slot * plan::SLOT as f32).round() as i32;
+        let (s0, e0) = (to_min(start_slot).clamp(0, 24 * 60), to_min(end_slot).clamp(0, 24 * 60));
+        let id = id.to_string();
+        a.mutate(|d| format!("{}の実績の修正", task_label(d, &id)), |s| plan::set_actual(s, &id, &date, s0 as u16, e0 as u16));
     });
     on!(on_plan_remove, |a, id| {
         let id = id.to_string();
@@ -1309,6 +1373,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
 
+    // 前の日までの計画のうち、実績の無いものを「予定どおり」として残す
+    app.freeze_plans(app.today.get());
     app.refresh();
 
     // 開発用: スクリーンショットで確認するため、起動直後に特定の画面を開く

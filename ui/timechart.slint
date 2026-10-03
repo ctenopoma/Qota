@@ -3,7 +3,7 @@
 // キーボード: 行に Tab で止まり、← → で 15 分ずらし、Shift+← → で長さを変え、Delete で外し、Enter で詳細（棒が無ければ今の時刻の後ろへ置く）。
 import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { Label, TextButton, HLine, KeyFocus, FocusRing } from "widgets.slint";
+import { Check, Label, TextButton, HLine, KeyFocus, FocusRing } from "widgets.slint";
 import { PlanRowItem } from "types.slint";
 
 // 1 行（1 つのタスク）。左に題名、右に時間軸と計画の棒
@@ -19,6 +19,8 @@ component PlanRow inherits Rectangle {
     property <length> lane-y: root.compact ? 22px : 0px;
 
     callback open(task-id: string);
+    // 完了 / 未完了の切り替え（完了したときは、計画の最中なら実績の終わりが記録される）
+    callback toggle(task-id: string);
     // slot の位置に棒を置く（棒があれば、その位置へ動かす）
     callback place(task-id: string, slot: int);
     callback place-now(task-id: string);
@@ -26,7 +28,12 @@ component PlanRow inherits Rectangle {
     callback move-by(block-id: string, delta-slots: int);
     callback resize-by(block-id: string, delta-slots: int);
     callback remove(block-id: string);
+    // 実績: 「終了」（いまを終わりにする）と、棒をドラッグして直した（枠の位置。15 分 = 1）
+    callback actual-stop(task-id: string);
+    callback actual-set(task-id: string, start-slot: float, end-slot: float);
 
+    // 計画の棒（上の段）と実績の棒（下の段）の高さ
+    property <length> avail: root.height - root.lane-y;
     property <bool> has-block: root.item.block-id != "";
     // 引いている間の位置と長さ（枠の数）。引いていなければ -1
     property <int> preview-start: -1;
@@ -36,6 +43,14 @@ component PlanRow inherits Rectangle {
     property <int> grab: 0;
     property <int> press-slot: 0;
     property <bool> dragged: false;
+    // 実績の棒をドラッグしている間の位置と長さ（枠。小数）。引いていなければ -1
+    property <float> a-preview-start: -1;
+    property <float> a-preview-end: -1;
+    // 1 動かす / 2 終わりを変える / 3 始まりを変える
+    property <int> a-mode: 0;
+    property <float> a-grab: 0;
+    property <float> shown-a-start: root.a-preview-start >= 0 ? root.a-preview-start : root.item.a-start;
+    property <float> shown-a-end: root.a-preview-end >= 0 ? root.a-preview-end : root.item.a-start + root.item.a-len;
     property <int> shown-start: root.preview-start >= 0 ? root.preview-start : root.item.start-slot;
     property <int> shown-len: root.preview-len > 0 ? root.preview-len : root.item.len-slots;
 
@@ -44,15 +59,21 @@ component PlanRow inherits Rectangle {
     // 題名。クリックで詳細
     Rectangle {
         x: root.compact ? root.pin-x : 0px;
+        // 位置を指定しない要素は親の中央に置かれるので、y を明示する
+        y: 0px;
         width: root.compact ? 260px : root.label-w;
         height: root.compact ? 22px : root.height;
         title-ta := TouchArea {
+            y: 0px;
+            height: root.compact ? 22px : root.height;
             mouse-cursor: pointer;
             clicked => {
                 root.open(root.item.task-id);
             }
             HorizontalLayout {
-                padding-left: root.compact ? 8px : 24px;
+                y: 0px;
+                height: parent.height;
+                padding-left: root.compact ? 28px : 36px;
                 padding-right: 8px;
                 Label {
                     horizontal-stretch: 1;
@@ -66,12 +87,22 @@ component PlanRow inherits Rectangle {
         }
     }
 
+    // 完了のチェック（行の左端）
+    Check {
+        x: root.compact ? root.pin-x + 8px : 18px;
+        y: root.compact ? 4px : (root.height - self.height) / 2;
+        checked: root.item.done;
+        toggled => {
+            root.toggle(root.item.task-id);
+        }
+    }
+
     // 計画の棒（見た目だけ。操作は下の lane が受ける）
     if root.has-block: Rectangle {
         x: root.label-w + root.shown-start * root.slot-w + 1px;
-        y: root.lane-y + 4px;
+        y: root.lane-y + 2px;
         width: root.shown-len * root.slot-w - 2px;
-        height: root.height - root.lane-y - 8px;
+        height: root.avail / 2 - 3px;
         border-radius: 4px;
         border-width: 1px;
         border-color: Theme.accent;
@@ -80,8 +111,8 @@ component PlanRow inherits Rectangle {
         Rectangle {
             x: parent.width - 5px;
             width: 3px;
-            y: 6px;
-            height: parent.height - 12px;
+            y: 3px;
+            height: parent.height - 6px;
             border-radius: 1px;
             background: Theme.accent.with-alpha(0.7);
         }
@@ -91,7 +122,7 @@ component PlanRow inherits Rectangle {
     lane := TouchArea {
         x: root.label-w;
         y: root.lane-y;
-        height: root.height - root.lane-y;
+        height: root.avail / 2;
         width: root.slots * root.slot-w;
         mouse-cursor: pointer;
 
@@ -149,8 +180,94 @@ component PlanRow inherits Rectangle {
         }
     }
 
+    // 実績の棒（下の段）。進行中と予定どおりは薄く、記録のあるものは濃く出す
+    if root.item.a-kind != 0: Rectangle {
+        x: root.label-w + root.shown-a-start * root.slot-w;
+        y: root.lane-y + root.avail / 2 + 1px;
+        width: max(2px, (root.shown-a-end - root.shown-a-start) * root.slot-w);
+        height: root.avail / 2 - 3px;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: Theme.med;
+        background: root.item.a-kind == 3 ? Theme.med.with-alpha(0.55) : Theme.med.with-alpha(0.2);
+    }
+
+    // 実績の棒の操作（記録のあるものか、予定どおりのもの。ドラッグで直すと記録になる）
+    alane := TouchArea {
+        enabled: root.item.a-kind != 0;
+        x: root.label-w;
+        y: root.lane-y + root.avail / 2;
+        height: root.avail / 2;
+        width: root.slots * root.slot-w;
+        mouse-cursor: pointer;
+
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && root.item.a-kind != 0 {
+                root.a-grab = self.mouse-x / root.slot-w - root.item.a-start;
+                if self.mouse-x >= (root.item.a-start + root.item.a-len) * root.slot-w - 8px
+                    && self.mouse-x <= (root.item.a-start + root.item.a-len) * root.slot-w + 2px {
+                    root.a-mode = 2;
+                } else if self.mouse-x >= root.item.a-start * root.slot-w - 2px
+                    && self.mouse-x <= root.item.a-start * root.slot-w + 8px {
+                    root.a-mode = 3;
+                } else if self.mouse-x > root.item.a-start * root.slot-w
+                    && self.mouse-x < (root.item.a-start + root.item.a-len) * root.slot-w {
+                    root.a-mode = 1;
+                } else {
+                    root.a-mode = 0;
+                }
+            } else if event.kind == PointerEventKind.up {
+                if root.a-mode != 0 && root.a-preview-start >= 0 && root.a-preview-end > root.a-preview-start {
+                    root.actual-set(root.item.task-id, root.a-preview-start, root.a-preview-end);
+                }
+                root.a-mode = 0;
+                root.a-preview-start = -1;
+                root.a-preview-end = -1;
+            } else if event.kind == PointerEventKind.cancel {
+                root.a-mode = 0;
+                root.a-preview-start = -1;
+                root.a-preview-end = -1;
+            }
+        }
+
+        moved => {
+            // 5 分刻み（1 枠の 3 分の 1）に丸める
+            if root.a-mode == 1 {
+                root.a-preview-start = max(0, round((self.mouse-x / root.slot-w - root.a-grab) * 3) / 3);
+                root.a-preview-end = root.a-preview-start + root.item.a-len;
+            } else if root.a-mode == 2 {
+                root.a-preview-start = root.item.a-start;
+                root.a-preview-end = max(root.item.a-start + 1 / 3, round(self.mouse-x / root.slot-w * 3) / 3);
+            } else if root.a-mode == 3 {
+                root.a-preview-end = root.item.a-start + root.item.a-len;
+                root.a-preview-start = max(0, min(root.a-preview-end - 1 / 3, round(self.mouse-x / root.slot-w * 3) / 3));
+            }
+        }
+    }
+
+    // 進行中のときの「終了」ボタン（実績の終わりをいまにする。タスクは完了にしない）
+    if root.item.a-kind == 1: TextButton {
+        x: root.compact ? root.pin-x + 200px : root.label-w - 64px;
+        y: root.compact ? 1px : (root.height - 22px) / 2;
+        width: 58px;
+        height: 22px;
+        focusable: true;
+        text: "■ 終了";
+        mono: false;
+        bordered: true;
+        font-size: Theme.fs-2xs;
+        clicked => {
+            root.actual-stop(root.item.task-id);
+        }
+    }
+
     // キーボード: Tab で行に止まる
     kf := KeyFocus {
+        // Enter は詳細（棒が無ければ置く）、Space は完了の切り替え
+        space-activates: false;
+        space-pressed => {
+            root.toggle(root.item.task-id);
+        }
         activated => {
             if root.has-block {
                 root.open(root.item.task-id);
@@ -162,6 +279,12 @@ component PlanRow inherits Rectangle {
             if root.has-block {
                 root.remove(root.item.block-id);
             }
+        }
+
+        KeyBinding {
+            keys: @keys(E);
+            enabled: root.item.a-kind == 1;
+            activated => { root.actual-stop(root.item.task-id); }
         }
 
         KeyBinding {
@@ -212,14 +335,17 @@ export component TimeChart inherits Rectangle {
     callback place-now(task-id: string);
     callback arrange();
     callback open(task-id: string);
+    callback toggle(task-id: string);
     callback resize(block-id: string, len-slots: int);
     callback move-by(block-id: string, delta-slots: int);
     callback resize-by(block-id: string, delta-slots: int);
     callback remove(block-id: string);
+    callback actual-stop(task-id: string);
+    callback actual-set(task-id: string, start-slot: float, end-slot: float);
     callback show-list();
 
     property <length> label-w: root.compact ? 8px : 220px;
-    property <length> row-h: root.compact ? 56px : 36px;
+    property <length> row-h: root.compact ? 76px : 46px;
     property <length> head-h: 30px;
     // 1 日がちょうど横に収まる幅（狭いときは 12px 固定でスクロール）
     property <length> slot-w: root.compact ? 12px : max(8px, (root.width - root.label-w - 32px) / max(1, root.slots));
@@ -240,7 +366,7 @@ export component TimeChart inherits Rectangle {
             }
 
             if !root.compact: Label {
-                text: root.unplaced-count > 0 ? "計画 ・ 未配置 " + root.unplaced-count + " 件" : "計画";
+                text: (root.unplaced-count > 0 ? "未配置 " + root.unplaced-count + " 件 ・ " : "") + "上の段 計画 / 下の段 実績";
                 text-color: Theme.mute;
                 font-size: Theme.fs-2xs;
                 mono: true;
@@ -330,12 +456,15 @@ export component TimeChart inherits Rectangle {
                 compact: root.compact;
                 pin-x: -chart-sv.content-x;
                 open(id) => { root.open(id); }
+                toggle(id) => { root.toggle(id); }
                 place(id, s) => { root.place(id, s); }
                 place-now(id) => { root.place-now(id); }
                 resize(id, n) => { root.resize(id, n); }
                 move-by(id, d) => { root.move-by(id, d); }
                 resize-by(id, d) => { root.resize-by(id, d); }
                 remove(id) => { root.remove(id); }
+                actual-stop(id) => { root.actual-stop(id); }
+                actual-set(id, s, e) => { root.actual-set(id, s, e); }
             }
 
             // いまの時刻

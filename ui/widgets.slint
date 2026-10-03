@@ -8,6 +8,9 @@ export component KeyFocus inherits FocusScope {
     callback activated();
     // Delete キー（使う部品だけが受ける）
     callback deleted();
+    // false にすると、Space は activated ではなく space-pressed を呼ぶ（Space を別の操作に使う部品用）
+    in property <bool> space-activates: true;
+    callback space-pressed();
     out property <bool> ring;
 
     focus-on-click: false;
@@ -28,7 +31,11 @@ export component KeyFocus inherits FocusScope {
     KeyBinding {
         keys: @keys(Space);
         activated => {
-            root.activated();
+            if root.space-activates {
+                root.activated();
+            } else {
+                root.space-pressed();
+            }
         }
     }
 

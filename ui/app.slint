@@ -59,6 +59,8 @@ export component AppWindow inherits Window {
     callback plan-move-by(id: string, delta-slots: int);
     callback plan-resize-by(id: string, delta-slots: int);
     callback plan-remove(id: string);
+    callback actual-stop(task-id: string);
+    callback actual-set(task-id: string, start-slot: float, end-slot: float);
     // キーボードで選んでいる一覧の行（active-tasks の何番目か。-1 なら無し）
     in-out property <int> list-cursor: -1;
     // Ctrl+N の要求（新規タスクの入力欄へ移る）
@@ -527,10 +529,13 @@ export component AppWindow inherits Window {
                     place-now(id) => { root.plan-place-now(id); }
                     arrange => { root.plan-arrange(); }
                     open(id) => { root.open-task(id); }
+                    toggle(id) => { root.toggle-task(id); }
                     resize(id, n) => { root.plan-resize(id, n); }
                     move-by(id, d) => { root.plan-move-by(id, d); }
                     resize-by(id, d) => { root.plan-resize-by(id, d); }
                     remove(id) => { root.plan-remove(id); }
+                    actual-stop(id) => { root.actual-stop(id); }
+                    actual-set(id, s, e) => { root.actual-set(id, s, e); }
                     show-list => { root.today-chart = false; }
                 }
 

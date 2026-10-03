@@ -3,7 +3,7 @@
 
 use uuid::Uuid;
 use crate::error::{Error, Result};
-use crate::models::{AppData, PlanBlock, Settings};
+use crate::models::{ActualBlock, AppData, PlanBlock, Settings};
 use crate::store::AppState;
 
 /// 刻み（分）
@@ -165,15 +165,15 @@ pub fn resize_block(state: &AppState, block_id: &str, new_len: u16) -> Result<Pl
     Ok(block)
 }
 
-/// 棒を外す（タスクは消さない）
+/// 棒を外す（タスクは消さない）。その日の同じタスクの実績も外す（計画の無い実績は出さないので）
 pub fn remove_block(state: &AppState, block_id: &str) -> Result<()> {
     {
         let mut data = state.data.lock();
-        let before = data.plans.len();
-        data.plans.retain(|b| b.id != block_id);
-        if data.plans.len() == before {
+        let Some(b) = data.plans.iter().find(|b| b.id == block_id).cloned() else {
             return Err(Error::NotFound(format!("block {block_id}")));
-        }
+        };
+        data.plans.retain(|x| x.id != block_id);
+        data.actuals.retain(|a| !(a.date == b.date && a.task_id == b.task_id));
     }
     state.save()
 }
@@ -193,6 +193,107 @@ pub fn arrange_from(state: &AppState, date: &str, from: u16, task_ids: &[String]
         }
     }
     Ok(placed)
+}
+
+/// 計画の終わりを過ぎてから完了しても、実績の終わりをその時刻にする上限（分）。
+/// これを超えて遅れた完了は、いつ終わったか分からない（夜にまとめて完了、など）ので、予定どおりのままにする
+pub const OVERRUN_LIMIT: u16 = 60;
+
+/// 実績の編集の刻み（分）
+pub const ACTUAL_STEP: u16 = 5;
+
+/// 「終了」: 実績の終わりを now にする。実績の記録が無ければ、計画の開始から now までを実績にする。
+/// 計画の開始前なら何もしない
+pub fn stop_actual(state: &AppState, task_id: &str, date: &str, now_min: u16) -> Result<()> {
+    {
+        let mut data = state.data.lock();
+        let plan = data.plans.iter().find(|b| b.date == date && b.task_id == task_id).cloned()
+            .ok_or_else(|| Error::NotFound(format!("plan of {task_id}")))?;
+        if now_min < plan.start_min {
+            return Ok(());
+        }
+        match data.actuals.iter_mut().find(|a| a.date == date && a.task_id == task_id) {
+            Some(a) => a.end_min = now_min.max(a.start_min + 1),
+            None => data.actuals.push(ActualBlock {
+                id: Uuid::new_v4().to_string(),
+                task_id: task_id.to_string(),
+                title: plan.title.clone(),
+                date: date.to_string(),
+                start_min: plan.start_min,
+                end_min: now_min.max(plan.start_min + 1),
+            }),
+        }
+    }
+    state.save()
+}
+
+/// 実績の棒を、start〜end（0 時からの分。5 分刻みに丸める）にする。無ければ作る
+pub fn set_actual(state: &AppState, task_id: &str, date: &str, start_min: u16, end_min: u16) -> Result<()> {
+    {
+        let mut data = state.data.lock();
+        let title = data.plans.iter().find(|b| b.date == date && b.task_id == task_id)
+            .map(|b| b.title.clone())
+            .ok_or_else(|| Error::NotFound(format!("plan of {task_id}")))?;
+        let round = |m: u16| (m + ACTUAL_STEP / 2) / ACTUAL_STEP * ACTUAL_STEP;
+        let (s, e) = (round(start_min), round(end_min));
+        if s >= e || e > 24 * 60 {
+            return Err(Error::InvalidInput("actual range".into()));
+        }
+        match data.actuals.iter_mut().find(|a| a.date == date && a.task_id == task_id) {
+            Some(a) => {
+                a.start_min = s;
+                a.end_min = e;
+            }
+            None => data.actuals.push(ActualBlock {
+                id: Uuid::new_v4().to_string(),
+                task_id: task_id.to_string(),
+                title,
+                date: date.to_string(),
+                start_min: s,
+                end_min: e,
+            }),
+        }
+    }
+    state.save()
+}
+
+/// タスクを完了したとき、計画の最中か直後なら、完了した時刻を実績の終わりにする。
+/// 計画の前や、終わりから OVERRUN_LIMIT 分を過ぎてからの完了は、予定どおりのままにする
+pub fn record_completion(state: &AppState, task_id: &str, date: &str, now_min: u16) -> Result<()> {
+    let Some(plan) = state.data.lock().plans.iter().find(|b| b.date == date && b.task_id == task_id).cloned() else {
+        return Ok(());
+    };
+    let has_actual = state.data.lock().actuals.iter().any(|a| a.date == date && a.task_id == task_id);
+    if has_actual || now_min < plan.start_min || now_min > plan.start_min + plan.duration_min + OVERRUN_LIMIT {
+        return Ok(());
+    }
+    stop_actual(state, task_id, date, now_min)
+}
+
+/// 今日より前の計画で、実績が無いものを「予定どおり」として、計画と同じ内容で実績に残す（分析のため）。作った数を返す
+pub fn freeze_before(state: &AppState, today: &str) -> Result<usize> {
+    let n = {
+        let mut data = state.data.lock();
+        let missing: Vec<ActualBlock> = data.plans.iter()
+            .filter(|b| b.date.as_str() < today)
+            .filter(|b| !data.actuals.iter().any(|a| a.date == b.date && a.task_id == b.task_id))
+            .map(|b| ActualBlock {
+                id: Uuid::new_v4().to_string(),
+                task_id: b.task_id.clone(),
+                title: b.title.clone(),
+                date: b.date.clone(),
+                start_min: b.start_min,
+                end_min: b.start_min + b.duration_min,
+            })
+            .collect();
+        let n = missing.len();
+        data.actuals.extend(missing);
+        n
+    };
+    if n > 0 {
+        state.save()?;
+    }
+    Ok(n)
 }
 
 #[cfg(test)]
@@ -290,15 +391,89 @@ mod tests {
     }
 
     #[test]
+    fn stopping_records_the_actual_from_the_planned_start() {
+        let (_d, s) = state();
+        let a = add_task(&s, "A");
+        place_task(&s, &a, "2026-10-05", 9 * 60, 60).unwrap();
+        // 計画の開始前は何もしない
+        stop_actual(&s, &a, "2026-10-05", 8 * 60 + 50).unwrap();
+        assert!(s.data.lock().actuals.is_empty());
+        // 9:40 に終了すると、9:00〜9:40 が実績
+        stop_actual(&s, &a, "2026-10-05", 9 * 60 + 40).unwrap();
+        let act = s.data.lock().actuals.clone();
+        assert_eq!((act.len(), act[0].start_min, act[0].end_min), (1, 9 * 60, 9 * 60 + 40));
+        // もう一度終了しても、記録は増えずに終わりが更新される
+        stop_actual(&s, &a, "2026-10-05", 9 * 60 + 50).unwrap();
+        assert_eq!(s.data.lock().actuals.len(), 1);
+        assert_eq!(s.data.lock().actuals[0].end_min, 9 * 60 + 50);
+    }
+
+    #[test]
+    fn completion_sets_the_end_only_during_or_just_after_the_plan() {
+        let (_d, s) = state();
+        let ids: Vec<String> = ["A", "B", "C"].iter().map(|t| add_task(&s, t)).collect();
+        for (i, id) in ids.iter().enumerate() {
+            place_task(&s, id, "2026-10-05", (9 + i as u16 * 2) * 60, 60).unwrap(); // 9, 11, 13 時から 1 時間
+        }
+        record_completion(&s, &ids[0], "2026-10-05", 9 * 60 + 45).unwrap(); // 最中: 実績 9:00〜9:45
+        record_completion(&s, &ids[1], "2026-10-05", 12 * 60 + 30).unwrap(); // 終わり(12:00)の 30 分後: 実績 11:00〜12:30
+        record_completion(&s, &ids[2], "2026-10-05", 22 * 60).unwrap(); // 夜にまとめて完了: 記録しない（予定どおり）
+        let act = s.data.lock().actuals.clone();
+        let find = |id: &str| act.iter().find(|a| a.task_id == id).map(|a| (a.start_min, a.end_min));
+        assert_eq!(find(&ids[0]), Some((9 * 60, 9 * 60 + 45)));
+        assert_eq!(find(&ids[1]), Some((11 * 60, 12 * 60 + 30)));
+        assert_eq!(find(&ids[2]), None);
+        // 計画の無いタスクの完了は何もしない
+        let free = add_task(&s, "D");
+        record_completion(&s, &free, "2026-10-05", 10 * 60).unwrap();
+        assert_eq!(s.data.lock().actuals.len(), 2);
+    }
+
+    #[test]
+    fn editing_an_actual_rounds_to_five_minutes() {
+        let (_d, s) = state();
+        let a = add_task(&s, "A");
+        place_task(&s, &a, "2026-10-05", 9 * 60, 60).unwrap();
+        set_actual(&s, &a, "2026-10-05", 9 * 60 + 2, 10 * 60 + 11).unwrap();
+        let act = s.data.lock().actuals.clone();
+        assert_eq!((act[0].start_min, act[0].end_min), (9 * 60, 10 * 60 + 10));
+        assert!(set_actual(&s, &a, "2026-10-05", 10 * 60, 10 * 60).is_err());
+        assert!(set_actual(&s, &a, "2026-10-05", 9 * 60, 25 * 60).is_err());
+        // 棒を外すと、その日の実績も外れる
+        let id = s.data.lock().plans[0].id.clone();
+        remove_block(&s, &id).unwrap();
+        assert!(s.data.lock().actuals.is_empty());
+    }
+
+    #[test]
+    fn past_plans_without_an_actual_are_frozen_as_planned() {
+        let (_d, s) = state();
+        let a = add_task(&s, "A");
+        let b = add_task(&s, "B");
+        place_task(&s, &a, "2026-10-04", 9 * 60, 60).unwrap();
+        place_task(&s, &b, "2026-10-04", 11 * 60, 30).unwrap();
+        place_task(&s, &a, "2026-10-05", 9 * 60, 60).unwrap(); // 今日の分は凍結しない
+        set_actual(&s, &b, "2026-10-04", 11 * 60, 11 * 60 + 45).unwrap(); // 実績が有るものはそのまま
+        assert_eq!(freeze_before(&s, "2026-10-05").unwrap(), 1);
+        let act = s.data.lock().actuals.clone();
+        assert_eq!(act.len(), 2);
+        let frozen = act.iter().find(|x| x.task_id == a && x.date == "2026-10-04").unwrap();
+        assert_eq!((frozen.start_min, frozen.end_min), (9 * 60, 10 * 60));
+        // もう一度呼んでも増えない
+        assert_eq!(freeze_before(&s, "2026-10-05").unwrap(), 0);
+    }
+
+    #[test]
     fn old_files_without_plans_or_day_range_still_load() {
         let data = crate::seed::sample_data();
         let mut v = serde_json::to_value(&data).unwrap();
         v.as_object_mut().unwrap().remove("plans");
+        v.as_object_mut().unwrap().remove("actuals");
         let st = v["settings"].as_object_mut().unwrap();
         st.remove("dayStartHour");
         st.remove("dayEndHour");
         let back: AppData = serde_json::from_value(v).unwrap();
-        assert!(back.plans.is_empty());
+        assert!(back.plans.is_empty() && back.actuals.is_empty());
         assert_eq!((back.settings.day_start_hour, back.settings.day_end_hour), (6, 24));
     }
 }

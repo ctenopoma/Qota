@@ -96,6 +96,11 @@ export struct PlanRowItem {
     // 時間軸の先頭から数えた 15 分の枠の番号と長さ
     start-slot: int,
     len-slots: int,
+    // 実績の棒。a-kind: 0 なし / 1 進行中（予定どおり、いまの時刻まで）/ 2 予定どおり（記録なし）/ 3 記録あり。
+    // a-start と a-len は枠の数（15 分 = 1。小数）
+    a-kind: int,
+    a-start: float,
+    a-len: float,
 }
 
 // カレンダーの 1 マス。day == 0 は月初めの前の空白

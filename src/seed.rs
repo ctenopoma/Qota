@@ -62,5 +62,6 @@ pub fn sample_data() -> AppData {
             day_end_hour: 24,
         },
         plans: vec![],
+        actuals: vec![],
     }
 }

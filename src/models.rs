@@ -104,6 +104,21 @@ pub struct PlanBlock {
     pub duration_min: u16,
 }
 
+/// 今日のタイムチャートの実績の棒。計画の棒（PlanBlock）と対にして、計画と現実のずれを後で分析する。
+/// 何も記録しなかったときは「予定どおり」とみなし、日が替わるときに計画と同じ内容で残す
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActualBlock {
+    pub id: String,
+    pub task_id: String,
+    pub title: String,
+    /// YYYY-MM-DD
+    pub date: String,
+    /// 0 時からの分
+    pub start_min: u16,
+    pub end_min: u16,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode { Dark, Light }
@@ -131,6 +146,9 @@ pub struct AppData {
     /// タイムチャートの計画。古いファイルには無いので、無ければ空
     #[serde(default)]
     pub plans: Vec<PlanBlock>,
+    /// タイムチャートの実績。計画と同様、古いファイルには無いので、無ければ空
+    #[serde(default)]
+    pub actuals: Vec<ActualBlock>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
