@@ -530,15 +530,16 @@ impl App {
             project_id: pid.into(),
         };
         let mut items = vec![
-            cmd("→ 今日", "T", "today", ""),
-            cmd("→ 受信箱", "I", "inbox", ""),
-            cmd("→ 今後", "U", "upcoming", ""),
-            cmd("→ プロジェクト一覧", "P", "projects", ""),
-            cmd("→ タグ", "#", "tags", ""),
-            cmd("→ 設定", ",", "settings", ""),
+            cmd("→ 今日", "画面", "today", ""),
+            cmd("→ 受信箱", "画面", "inbox", ""),
+            cmd("→ 今後", "画面", "upcoming", ""),
+            cmd("→ カレンダー", "画面", "calendar", ""),
+            cmd("→ プロジェクト一覧", "画面", "projects", ""),
+            cmd("→ タグ", "画面", "tags", ""),
+            cmd("→ 設定", "画面", "settings", ""),
         ];
         for p in &self.state.data.lock().projects {
-            items.push(cmd(&format!("▸ {}", p.name), "PROJECT", "project", &p.id));
+            items.push(cmd(&format!("▸ {}", p.name), "プロジェクト", "project", &p.id));
         }
         let q = q.to_lowercase();
         items.retain(|it| q.is_empty() || it.label.to_lowercase().contains(&q));

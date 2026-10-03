@@ -555,6 +555,12 @@ export component ProjectsView inherits Rectangle {
             padding-top: 12px;
             padding-bottom: 12px;
             spacing: 8px;
+            Label {
+                text: "新しいプロジェクトの色";
+                text-color: Theme.faint;
+                font-size: Theme.fs-2xs;
+            }
+
             Swatches {
                 selected <=> root.new-color;
             }

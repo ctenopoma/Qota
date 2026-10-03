@@ -9,6 +9,8 @@ component Card inherits Rectangle {
     in property <string> description;
     // 説明の 2 行目以降。折り返し (wrap) の Text を使うと ScrollView が開いた直後に一番下までスクロールしてしまうので、行を分けて渡す
     in property <[string]> lines;
+    // ボタンを置かないカード（ショートカット一覧など）は、下に余白の行を作らない
+    in property <bool> has-actions: true;
 
     max-width: 512px;
     background: Theme.panel;
@@ -37,7 +39,7 @@ component Card inherits Rectangle {
         }
 
         HorizontalLayout {
-            padding-top: 8px;
+            padding-top: root.has-actions ? 8px : 0px;
             spacing: 6px;
             alignment: start;
             @children
@@ -132,6 +134,7 @@ export component SettingsPage inherits Rectangle {
 
             Card {
                 title: "ショートカット";
+                has-actions: false;
                 description: "Ctrl+K コマンドパレット / Ctrl+/ 検索";
                 lines: [
                     "Ctrl+Z 取り消し / Ctrl+Y（Ctrl+Shift+Z）やり直し",
