@@ -37,6 +37,9 @@ pub fn format_due(due: Option<&str>) -> String {
         "今日".into()
     } else if Some(d) == t.succ_opt() {
         "明日".into()
+    } else if d < t && (t - d).num_days() <= 99 {
+        // 過ぎた期日は、何日前かのほうが「5/8」より分かる
+        format!("{}日前", (t - d).num_days())
     } else {
         format!("{}/{}", d.month(), d.day())
     }

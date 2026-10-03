@@ -13,7 +13,7 @@ mod window_state;
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -76,6 +76,8 @@ struct Clip {
 
 enum Pending {
     ResetData,
+    /// 選んだファイルでデータを置き換える
+    Import(PathBuf),
 }
 
 type Route = (SharedString, SharedString);
@@ -487,19 +489,32 @@ impl App {
         self.mutate(|_| label, |s| tasks::update_task(s, id, patch));
     }
 
-    /// ファイルを選んで読み込む。読み込む前にバックアップを 1 つ残し、読み込んだ後も「元に戻す」で戻せる
+    /// ファイルを選んで、置き換える前に件数を見せて確認する。確認後はバックアップを 1 つ残して読み込み、「元に戻す」で戻せる
     fn import_with_dialog(&self, start_dir: Option<&Path>) {
         let Some(path) = io::pick_import_file(start_dir) else { return };
         let name = quoted(&path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
-        if let Some(why) = io::import_problem(&path) {
-            self.toast(format!("{name}を読み込めませんでした（{why}）。今のデータは変わっていません"), false, true);
-            return;
-        }
+        let (tasks, projects) = match io::inspect_import(&path) {
+            Ok(c) => c,
+            Err(why) => {
+                self.toast(format!("{name}を読み込めませんでした（{why}）。今のデータは変わっていません"), false, true);
+                return;
+            }
+        };
+        let now = self.state.data.lock().tasks.len();
+        self.ask(
+            Pending::Import(path),
+            format!("{name}（タスク {tasks} 件・プロジェクト {projects} 件）を読み込みます。今のデータ（タスク {now} 件）は置き換わります。読み込んだ直後なら元に戻せます。"),
+            "読み込む",
+        );
+    }
+
+    fn run_import(&self, path: &Path) {
+        let name = quoted(&path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
         if let Err(e) = store::backup_before(self.state.dir(), "import", Local::now()) {
             eprintln!("backup failed: {e}");
         }
         *self.drafts.borrow_mut() = Drafts::default();
-        if self.mutate(|_| format!("{name}のインポート"), |s| io::import_from(s, &path)).is_some() {
+        if self.mutate(|_| format!("{name}のインポート"), |s| io::import_from(s, path)).is_some() {
             *self.detail_id.borrow_mut() = None;
             self.refresh();
             self.toast(format!("{name}を読み込みました"), true, false);
@@ -542,6 +557,7 @@ impl App {
 
     fn run_pending(&self, pending: Pending) {
         match pending {
+            Pending::Import(path) => self.run_import(&path),
             Pending::ResetData => {
                 if let Err(e) = store::backup_before(self.state.dir(), "reset", Local::now()) {
                     eprintln!("backup failed: {e}");

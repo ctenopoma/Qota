@@ -27,17 +27,15 @@ pub fn pick_import_file(start_dir: Option<&Path>) -> Option<PathBuf> {
     dialog.pick_file()
 }
 
-/// 読み込めないファイルの理由を、画面に出せる日本語で返す。読めるなら None
-pub fn import_problem(path: &Path) -> Option<String> {
-    let bytes = match std::fs::read(path) {
-        Ok(b) => b,
-        Err(_) => return Some("ファイルを開けません".into()),
-    };
-    match serde_json::from_slice::<AppData>(crate::store::strip_bom(&bytes)) {
-        Err(_) => Some("Qota のデータの形式ではありません".into()),
-        Ok(d) if d.schema_version != 1 => Some("対応していない版のデータです".into()),
-        Ok(_) => None,
+/// 読み込めるファイルなら (タスク数, プロジェクト数) を返す。読めないときは、画面に出せる日本語の理由を返す
+pub fn inspect_import(path: &Path) -> std::result::Result<(usize, usize), String> {
+    let bytes = std::fs::read(path).map_err(|_| "ファイルを開けません".to_string())?;
+    let d = serde_json::from_slice::<AppData>(crate::store::strip_bom(&bytes))
+        .map_err(|_| "Qota のデータの形式ではありません".to_string())?;
+    if d.schema_version != 1 {
+        return Err("対応していない版のデータです".into());
     }
+    Ok((d.tasks.len(), d.projects.len()))
 }
 
 /// 選んだファイルで今のデータを置き換える。形式が違えば何も変えない
@@ -81,11 +79,11 @@ mod tests {
         let mut bytes = vec![0xEF, 0xBB, 0xBF];
         bytes.extend(json);
         std::fs::write(&bom, bytes).unwrap();
-        assert!(import_problem(&bom).is_none());
+        assert!(inspect_import(&bom).is_ok());
         assert!(import_from(&s, &bom).is_ok());
 
         let bad = dir.path().join("bad.json");
         std::fs::write(&bad, b"{ not json").unwrap();
-        assert!(import_problem(&bad).is_some());
+        assert!(inspect_import(&bad).is_err());
     }
 }

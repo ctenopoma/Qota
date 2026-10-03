@@ -42,6 +42,40 @@ fn calculate_next_date(date_str: &str, interval: &Interval) -> Option<String> {
     Some(parsed.format("%Y-%m-%d").to_string())
 }
 
+/// 最初の期日から終了日までの、2 回目以降の期日。毎月は最初の日（31 日など）を基準に月ごとに数える
+/// （前回の日付から足すと 1/31 → 2/28 → 3/28 とずれていくため）
+fn dates_until(due: &str, interval: &Interval, end_date: &str) -> Vec<String> {
+    let mut out = vec![];
+    if let (Interval::Monthly, Ok(base)) = (interval, NaiveDate::parse_from_str(due, "%Y-%m-%d")) {
+        for n in 1u32.. {
+            let months = base.month0() + n;
+            let (y, m) = (base.year() + (months / 12) as i32, months % 12 + 1);
+            let mut d = base.day();
+            let date = loop {
+                if let Some(x) = NaiveDate::from_ymd_opt(y, m, d) {
+                    break x;
+                }
+                d -= 1;
+            };
+            let next = date.format("%Y-%m-%d").to_string();
+            if next.as_str() > end_date {
+                break;
+            }
+            out.push(next);
+        }
+        return out;
+    }
+    let mut current = due.to_string();
+    while let Some(next) = calculate_next_date(&current, interval) {
+        if next.as_str() > end_date {
+            break;
+        }
+        current = next.clone();
+        out.push(next);
+    }
+    out
+}
+
 pub fn create_task(state: &AppState, input: NewTask) -> Result<Task> {
     if input.title.trim().is_empty() {
         return Err(Error::InvalidInput("title is empty".into()));
@@ -77,16 +111,11 @@ pub fn create_task(state: &AppState, input: NewTask) -> Result<Task> {
 
         // Generate future instances if interval and end_date are set
         if let (Some(interval), Some(due), Some(end_date), Some(_rid)) = (&task.interval, &task.due, &task.recurrence_end, &task.recurrence_id) {
-            let mut current_due = due.clone();
-            while let Some(next_due) = calculate_next_date(&current_due, interval) {
-                if next_due > *end_date {
-                    break;
-                }
+            for next_due in dates_until(due, interval, end_date) {
                 let mut nt = task.clone();
                 nt.id = Uuid::new_v4().to_string();
-                nt.due = Some(next_due.clone());
+                nt.due = Some(next_due);
                 generated.push(nt);
-                current_due = next_due;
             }
         }
         for nt in &generated {
@@ -159,18 +188,13 @@ pub fn update_task(state: &AppState, id: &str, patch: TaskPatch) -> Result<Vec<T
 
             if let Some(_rid) = &t.recurrence_id {
                 if let (Some(interval), Some(due), Some(end_date)) = (&t.interval, &t.due, &t.recurrence_end) {
-                    let mut current_due = due.clone();
-                    while let Some(next_due) = calculate_next_date(&current_due, interval) {
-                        if next_due > *end_date {
-                            break;
-                        }
+                    for next_due in dates_until(due, interval, end_date) {
                         let mut nt = t.clone();
                         nt.id = Uuid::new_v4().to_string();
-                        nt.due = Some(next_due.clone());
+                        nt.due = Some(next_due);
                         nt.status = TaskStatus::Todo;
                         nt.completed_at = None;
                         generated.push(nt);
-                        current_due = next_due;
                     }
                 }
             }
@@ -365,5 +389,11 @@ mod tests {
         assert_eq!(d.title, "a (コピー)");
         assert_eq!(d.subtasks.len(), 2);
         assert!(d.subtasks.iter().all(|x| !x.done));
+    }
+
+    #[test]
+    fn monthly_keeps_the_original_day_across_short_months() {
+        let got = dates_until("2026-01-31", &Interval::Monthly, "2026-05-31");
+        assert_eq!(got, ["2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31"]);
     }
 }
