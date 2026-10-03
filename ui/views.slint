@@ -2,7 +2,7 @@
 // 旧 Tauri 版の src/pages/{Upcoming,Calendar,ProjectsList,Tags}.tsx / src/components/{SearchPanel,NotifPanel}.tsx の移植（時間計測の表示は外した）
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Bridge } from "theme.slint";
-import { Check, Label, TextButton, Input, HLine } from "widgets.slint";
+import { Check, Label, TextButton, Input, HLine, KeyFocus, FocusRing } from "widgets.slint";
 import { TaskItem, Column, CalCell } from "types.slint";
 
 // ───── 共通の部品 ─────
@@ -199,6 +199,19 @@ component UpcomingCard inherits Rectangle {
             }
         }
     }
+    // キーボード: Tab で止まり、Enter / Space で開く
+    kf := KeyFocus {
+        activated => {
+            root.open(root.task.id);
+        }
+    }
+
+    FocusRing {
+        on: kf.ring;
+        // カードは枠の外が切れる（clip）ので、枠は内側に描く
+        grow: 0px;
+    }
+
 }
 
 // プロジェクト一覧・タグのカード: タイトル・優先度・期日・サブタスクの数
@@ -272,6 +285,19 @@ component PlainCard inherits Rectangle {
             }
         }
     }
+    // キーボード: Tab で止まり、Enter / Space で開く
+    kf := KeyFocus {
+        activated => {
+            root.open(root.task.id);
+        }
+    }
+
+    FocusRing {
+        on: kf.ring;
+        // カードは枠の外が切れる（clip）ので、枠は内側に描く
+        grow: 0px;
+    }
+
 }
 
 // 列の枠。中身（カード）は呼び出し側が @children で入れる
@@ -924,6 +950,19 @@ component TaskChip inherits Rectangle {
             }
         }
     }
+    // キーボード: Tab で止まり、Enter / Space で開く
+    kf := KeyFocus {
+        activated => {
+            root.open(root.task.id);
+        }
+    }
+
+    FocusRing {
+        on: kf.ring;
+        // カードは枠の外が切れる（clip）ので、枠は内側に描く
+        grow: 0px;
+    }
+
 }
 
 export component CalendarView inherits Rectangle {
@@ -1017,6 +1056,20 @@ export component CalendarView inherits Rectangle {
                     width: grid.cell-w - 1px;
                     height: grid.cell-h - 1px;
                     background: Theme.bg;
+
+                    // キーボード: Tab で止まり、Enter / Space でその日の一覧を開く
+                    cell-kf := KeyFocus {
+                        enabled: c.day > 0;
+                        activated => {
+                            root.open-day(c.year, c.month, c.day);
+                        }
+                    }
+
+                    FocusRing {
+                        on: cell-kf.ring;
+                        grow: 0px;
+                        radius: 0px;
+                    }
 
                     if c.day > 0: cell-ta := TouchArea {
                         mouse-cursor: pointer;

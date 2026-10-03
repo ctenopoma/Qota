@@ -225,6 +225,7 @@ export component TaskRow inherits Rectangle {
                 }
 
                 DateButton {
+                    focusable: false;
                     width: 64px;
                     label: root.task.due-label == "" ? "–" : root.task.due-label;
                     text-color: root.task.overdue && !root.task.done ? Theme.high : Theme.mute;

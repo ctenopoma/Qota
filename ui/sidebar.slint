@@ -1,7 +1,7 @@
 // 旧 Tauri 版の src/components/Sidebar.tsx の移植（インサイトは外した）
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Bridge } from "theme.slint";
-import { Label, TextButton, Input, HLine } from "widgets.slint";
+import { Label, TextButton, Input, HLine, KeyFocus, FocusRing } from "widgets.slint";
 import { NavProject } from "types.slint";
 
 component NavButton inherits Rectangle {
@@ -39,11 +39,21 @@ component NavButton inherits Rectangle {
         }
     }
 
+    ks := KeyFocus {
+        activated => {
+            root.clicked();
+        }
+    }
+
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             root.clicked();
         }
+    }
+
+    FocusRing {
+        on: ks.ring;
     }
 }
 
@@ -54,6 +64,7 @@ component IconButton inherits Rectangle {
 
     HorizontalLayout {
         TextButton {
+            focusable: true;
             text: root.text;
             bordered: true;
             clicked => {

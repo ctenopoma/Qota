@@ -2,7 +2,7 @@
 // サブタスクの並び替えは @dnd-kit の代わりに DragArea / DropArea (Slint 1.17+) を使う。
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Bridge } from "theme.slint";
-import { Check, Label, TextButton, Input, TextArea, Select, DateButton, HLine } from "widgets.slint";
+import { Check, Label, TextButton, Input, TextArea, Select, DateButton, HLine, KeyFocus, FocusRing } from "widgets.slint";
 import { TaskDetailData, SubtaskItem, TagChip } from "types.slint";
 
 component FieldLabel inherits Label {
@@ -55,6 +55,12 @@ export component TaskDetail inherits Rectangle {
     // 繰り返しの 1 件を変えるとき、以降の回にも反映するか（false = この回だけ）
     in-out property <bool> following;
 
+    // 開いたときのフォーカスは、パネルの先頭（まだどの欄にも入っていない状態）に置く。
+    // そこから Tab で題名・状態・優先度…と巡回でき、Esc で閉じて一覧へ戻る
+    init => {
+        panel-focus.focus();
+    }
+
     property <int> hover-slot: -1;
     property <string> editing-id;
 
@@ -74,6 +80,11 @@ export component TaskDetail inherits Rectangle {
 
         // パネル内のクリックで閉じないように受け止める
         TouchArea { }
+
+        panel-focus := FocusScope {
+            focus-on-tab-navigation: false;
+            focus-on-click: false;
+        }
 
         Rectangle {
             x: 0;
@@ -144,6 +155,7 @@ export component TaskDetail inherits Rectangle {
                             }
 
                             TextButton {
+                                focusable: true;
                                 text: root.data.done ? "完了" : "未完了";
                                 text-color: Theme.ink;
                                 clicked => {
@@ -191,6 +203,7 @@ export component TaskDetail inherits Rectangle {
                             }
 
                             if root.data.due-label != "": TextButton {
+                                focusable: true;
                                 text: "×";
                                 text-color: Theme.faint;
                                 clicked => {
@@ -208,6 +221,7 @@ export component TaskDetail inherits Rectangle {
                                 spacing: 6px;
                                 alignment: start;
                                 TextButton {
+                                    focusable: true;
                                     text: "今日";
                                     bordered: true;
                                     clicked => {
@@ -216,6 +230,7 @@ export component TaskDetail inherits Rectangle {
                                 }
 
                                 TextButton {
+                                    focusable: true;
                                     text: "明日";
                                     bordered: true;
                                     clicked => {
@@ -224,6 +239,7 @@ export component TaskDetail inherits Rectangle {
                                 }
 
                                 TextButton {
+                                    focusable: true;
                                     text: "1週間後";
                                     bordered: true;
                                     clicked => {
@@ -246,6 +262,7 @@ export component TaskDetail inherits Rectangle {
                                     VerticalLayout {
                                         alignment: center;
                                         Check {
+                                            focusable: true;
                                             size: 13px;
                                             checked: root.data.repeating;
                                             toggled => {
@@ -391,6 +408,7 @@ export component TaskDetail inherits Rectangle {
                                 horizontal-stretch: 1;
                                 spacing: 4px;
                                 for tag in root.tags: TextButton {
+                                    focusable: true;
                                     text: "#" + tag.name;
                                     bordered: true;
                                     text-color: tag.on ? Theme.accent : Theme.mute;
@@ -476,6 +494,7 @@ export component TaskDetail inherits Rectangle {
                                             VerticalLayout {
                                                 alignment: center;
                                                 Check {
+                                                    focusable: true;
                                                     size: 12px;
                                                     checked: s.done;
                                                     toggled => {
@@ -522,6 +541,21 @@ export component TaskDetail inherits Rectangle {
                                                         strike: s.done;
                                                         text-color: s.done ? Theme.mute : Theme.ink;
                                                     }
+                                                }
+
+                                                // キーボードでは、止まって Enter / Space で名前の編集、Delete で削除
+                                                sk := KeyFocus {
+                                                    activated => {
+                                                        root.commit-drafts();
+                                                        root.editing-id = s.id;
+                                                    }
+                                                    deleted => {
+                                                        root.delete-subtask(root.data.id, s.id);
+                                                    }
+                                                }
+
+                                                FocusRing {
+                                                    on: sk.ring;
                                                 }
                                             }
 
@@ -576,6 +610,7 @@ export component TaskDetail inherits Rectangle {
                 padding-top: 8px;
                 padding-bottom: 8px;
                 TextButton {
+                    focusable: true;
                     text: "タスクを複製";
                     text-color: Theme.faint;
                     underline-on-hover: true;
@@ -589,6 +624,7 @@ export component TaskDetail inherits Rectangle {
                 }
 
                 TextButton {
+                    focusable: true;
                     text: "タスクを削除";
                     text-color: Theme.high;
                     hover-color: Theme.high;

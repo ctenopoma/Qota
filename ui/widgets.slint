@@ -2,10 +2,69 @@
 import { Theme, Bridge } from "theme.slint";
 import { CalendarDay } from "types.slint";
 
+// キーボードのフォーカスを受ける部品の土台。Tab で止まり、Enter / Space で activated を呼ぶ。
+// マウスで触ってもフォーカスは奪わない。枠 (ring) は Tab で来たときだけ出す
+export component KeyFocus inherits FocusScope {
+    callback activated();
+    // Delete キー（使う部品だけが受ける）
+    callback deleted();
+    out property <bool> ring;
+
+    focus-on-click: false;
+    focus-gained(reason) => {
+        root.ring = reason == FocusReason.tab-navigation;
+    }
+    focus-lost(reason) => {
+        root.ring = false;
+    }
+
+    KeyBinding {
+        keys: @keys(Return);
+        activated => {
+            root.activated();
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(Space);
+        activated => {
+            root.activated();
+        }
+    }
+
+    KeyBinding {
+        keys: @keys(Delete);
+        activated => {
+            root.deleted();
+        }
+    }
+}
+
+// キーボードで止まっているときの枠。親いっぱいに重ねる（grow だけ外へ広げる）
+export component FocusRing inherits Rectangle {
+    in property <bool> on;
+    in property <length> grow: 2px;
+    in property <length> radius: 4px;
+
+    visible: root.on;
+
+    Rectangle {
+        x: -root.grow;
+        y: -root.grow;
+        width: root.width + 2 * root.grow;
+        height: root.height + 2 * root.grow;
+        border-width: 2px;
+        border-color: Theme.accent;
+        border-radius: root.radius + root.grow;
+    }
+}
+
 // チェックボックス (w-3.5 h-3.5 rounded-sm border)
 export component Check inherits Rectangle {
     in property <bool> checked;
     in property <length> size: 14px;
+    // Tab で止まる（一覧の行など、行ごとに止まると多すぎるところでは false のまま）
+    in property <bool> focusable;
     callback toggled();
 
     width: root.size;
@@ -15,11 +74,23 @@ export component Check inherits Rectangle {
     border-color: root.checked ? Theme.accent : (ta.has-hover ? Theme.ink : Theme.mute);
     background: root.checked ? Theme.accent : transparent;
 
+    ks := KeyFocus {
+        enabled: root.focusable;
+        activated => {
+            root.toggled();
+        }
+    }
+
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             root.toggled();
         }
+    }
+
+    FocusRing {
+        on: ks.ring;
+        radius: 2px;
     }
 }
 
@@ -91,6 +162,8 @@ export component TextButton inherits Rectangle {
     in property <length> line-height: 20px;
     in property <length> pad-x: root.bordered ? 6px : 0px;
     in property <length> pad-y: root.bordered ? 2px : 0px;
+    // Tab で止まる（一覧の行の中など、止まる所が増えすぎるところでは false のまま）
+    in property <bool> focusable;
     out property <bool> hovered: ta.has-hover;
     callback clicked();
 
@@ -115,11 +188,22 @@ export component TextButton inherits Rectangle {
         }
     }
 
+    ks := KeyFocus {
+        enabled: root.focusable;
+        activated => {
+            root.clicked();
+        }
+    }
+
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             root.clicked();
         }
+    }
+
+    FocusRing {
+        on: ks.ring;
     }
 }
 
@@ -263,6 +347,9 @@ export component TextArea inherits Rectangle {
         changed has-focus => {
             if !self.has-focus {
                 root.focus-out(self.text);
+            } else {
+                // Tab で入ったときに全文が選択され、打った文字でメモが丸ごと置き換わらないようにする
+                self.clear-selection();
             }
         }
     }
@@ -282,6 +369,8 @@ export component TextArea inherits Rectangle {
 export component Select inherits Rectangle {
     in property <[string]> options;
     in property <int> current-index;
+    // Tab で止まる。止まっているときは ↑ ↓ Home End で値を変える（閉じた状態の標準のコンボボックスと同じ）
+    in property <bool> focusable: true;
     callback selected(index: int);
 
     height: 22px;
@@ -307,11 +396,54 @@ export component Select inherits Rectangle {
         }
     }
 
+    ks := KeyFocus {
+        enabled: root.focusable;
+        activated => {
+            popup.show();
+        }
+
+        KeyBinding {
+            keys: @keys(UpArrow);
+            activated => {
+                if root.current-index > 0 {
+                    root.selected(root.current-index - 1);
+                }
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(DownArrow);
+            activated => {
+                if root.current-index < root.options.length - 1 {
+                    root.selected(root.current-index + 1);
+                }
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Home);
+            activated => {
+                root.selected(0);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(End);
+            activated => {
+                root.selected(root.options.length - 1);
+            }
+        }
+    }
+
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             popup.show();
         }
+    }
+
+    FocusRing {
+        on: ks.ring;
     }
 
     popup := PopupWindow {
@@ -365,10 +497,29 @@ export component DatePopup inherits PopupWindow {
     callback picked(year: int, month: int, day: int);
     callback cleared();
 
-    property <int> view-year: root.year > 0 ? root.year : Bridge.today-year;
-    property <int> view-month: root.year > 0 ? root.month : Bridge.today-month;
+    // 表示中の年月。DateButton が開くときに、選択中の日の月へ戻す
+    in-out property <int> view-year: root.year > 0 ? root.year : Bridge.today-year;
+    in-out property <int> view-month: root.year > 0 ? root.month : Bridge.today-month;
     property <[CalendarDay]> days: Bridge.month-days(root.view-year, root.view-month, root.monday-first);
     property <length> cell: 30px;
+
+    // キーボードで選んでいる日（表示中の月の何日か）。0 なら無し
+    in-out property <int> cursor-day: 0;
+    property <bool> leap: (mod(root.view-year, 4) == 0 && mod(root.view-year, 100) != 0) || mod(root.view-year, 400) == 0;
+    property <int> days-in-month: [31, root.leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][root.view-month - 1];
+
+    // カーソルを n 日動かす。月の端を越えたら前後の月へ移る
+    function move-cursor(n: int) {
+        if root.cursor-day + n < 1 {
+            root.shift(-1);
+            root.cursor-day = root.days-in-month + root.cursor-day + n;
+        } else if root.cursor-day + n > root.days-in-month {
+            root.cursor-day = root.cursor-day + n - root.days-in-month;
+            root.shift(1);
+        } else {
+            root.cursor-day = root.cursor-day + n;
+        }
+    }
 
     function shift(delta: int) {
         if delta < 0 {
@@ -389,6 +540,8 @@ export component DatePopup inherits PopupWindow {
     }
 
     close-policy: PopupClosePolicy.close-on-click-outside;
+    // 開いたらキー操作の受け口へフォーカスを移す
+    forward-focus: popup-keys;
     width: 7 * root.cell + 16px;
     height: frame.preferred-height;
 
@@ -400,6 +553,66 @@ export component DatePopup inherits PopupWindow {
         drop-shadow-blur: 16px;
         drop-shadow-offset-y: 4px;
         drop-shadow-color: #00000066;
+
+        // キーボード操作: ← → 前後の日、↑ ↓ 前後の週、PageUp / PageDown 前後の月、
+        // Enter で決定、Delete で期日をなしに、Esc で閉じる
+        popup-keys := FocusScope {
+            focus-on-tab-navigation: false;
+            focus-on-click: false;
+
+            KeyBinding {
+                keys: @keys(LeftArrow);
+                activated => { root.move-cursor(-1); }
+            }
+
+            KeyBinding {
+                keys: @keys(RightArrow);
+                activated => { root.move-cursor(1); }
+            }
+
+            KeyBinding {
+                keys: @keys(UpArrow);
+                activated => { root.move-cursor(-7); }
+            }
+
+            KeyBinding {
+                keys: @keys(DownArrow);
+                activated => { root.move-cursor(7); }
+            }
+
+            KeyBinding {
+                keys: @keys(PageUp);
+                activated => { root.shift(-1); }
+            }
+
+            KeyBinding {
+                keys: @keys(PageDown);
+                activated => { root.shift(1); }
+            }
+
+            KeyBinding {
+                keys: @keys(Return);
+                activated => {
+                    if root.cursor-day > 0 {
+                        root.picked(root.view-year, root.view-month, root.cursor-day);
+                    }
+                    root.close();
+                }
+            }
+
+            KeyBinding {
+                keys: @keys(Delete);
+                activated => {
+                    root.cleared();
+                    root.close();
+                }
+            }
+
+            KeyBinding {
+                keys: @keys(Escape);
+                activated => { root.close(); }
+            }
+        }
 
         VerticalLayout {
             padding: 8px;
@@ -469,6 +682,17 @@ export component DatePopup inherits PopupWindow {
                         border-color: Theme.accent;
                     }
 
+                    // キーボードで選んでいる日
+                    if d.in-month && d.day == root.cursor-day: Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: parent.height - 2px;
+                        border-radius: 5px;
+                        border-width: 2px;
+                        border-color: Theme.ink;
+                    }
+
                     Label {
                         width: 100%;
                         height: 100%;
@@ -528,8 +752,23 @@ export component DateButton inherits Rectangle {
     in property <int> year;
     in property <int> month;
     in property <int> day;
+    // Tab で止まる。止まっているときの Enter / Space でピッカーを開く
+    in property <bool> focusable: true;
     callback picked(year: int, month: int, day: int);
     callback cleared();
+
+    // ピッカーの表示中の年月とキーボードのカーソル（ポップアップの中は外から直接書けないので、双方向バインドで渡す）
+    in-out property <int> vy: root.year > 0 ? root.year : Bridge.today-year;
+    in-out property <int> vm: root.year > 0 ? root.month : Bridge.today-month;
+    in-out property <int> cd: root.year > 0 ? root.day : Bridge.today-day;
+
+    // 開く。選択中の日（なければ今日）の月を表示し、その日にキーボードのカーソルを置く
+    function open() {
+        root.vy = root.year > 0 ? root.year : Bridge.today-year;
+        root.vm = root.year > 0 ? root.month : Bridge.today-month;
+        root.cd = root.year > 0 ? root.day : Bridge.today-day;
+        popup.show();
+    }
 
     height: 22px;
     border-radius: 4px;
@@ -549,14 +788,28 @@ export component DateButton inherits Rectangle {
         }
     }
 
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            popup.show();
+    ks := KeyFocus {
+        enabled: root.focusable;
+        activated => {
+            root.open();
         }
     }
 
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.open();
+        }
+    }
+
+    FocusRing {
+        on: ks.ring;
+    }
+
     popup := DatePopup {
+        view-year <=> root.vy;
+        view-month <=> root.vm;
+        cursor-day <=> root.cd;
         x: root.width - self.width;
         y: root.height + 2px;
         year: root.year;
