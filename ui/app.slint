@@ -31,6 +31,10 @@ export component AppWindow inherits Window {
     in-out property <bool> compact: false;
     changed width => {
         root.compact = root.width < 720px;
+        // 広げてドロワーが消えたあと、また縮めたときに開いた状態で戻らないようにする
+        if (!root.compact) {
+            root.drawer-open = false;
+        }
     }
     // mini モードでサイドバー（ドロワー）を開いているか
     in-out property <bool> drawer-open;
