@@ -270,7 +270,7 @@ impl App {
         ui.set_toast_error(error);
         ui.set_toast_text(shorten_middle(&msg, 80).into());
         let weak = self.ui.clone();
-        let secs = if undoable { 5 } else if error { 6 } else { 3 };
+        let secs = if undoable { 3 } else if error { 5 } else { 2 };
         self.toast_timer.start(slint::TimerMode::SingleShot, Duration::from_secs(secs), move || {
             if let Some(ui) = weak.upgrade() {
                 ui.set_toast_text(SharedString::new());
@@ -420,11 +420,8 @@ impl App {
             let done = d.tasks.iter().any(|t| t.id == id && t.status == TaskStatus::Done);
             format!("{}の{}", task_label(d, id), if done { "完了解除" } else { "完了" })
         };
-        if let Some(t) = self.mutate(label, |s| tasks::toggle_task(s, id)) {
-            if t.status == TaskStatus::Done {
-                self.toast(format!("{}を完了にしました", quoted(&t.title)), true, false);
-            }
-        }
+        // 完了は一覧で見て分かるので通知は出さない（戻すときは Ctrl+Z）
+        self.mutate(label, |s| tasks::toggle_task(s, id));
     }
 
     /// マウスが乗っているタスク、なければ開いている詳細のタスクをコピーする
@@ -473,9 +470,7 @@ impl App {
             _ => {}
         }
         let name = quoted(&task.title);
-        if self.mutate(|_| format!("{name}の貼り付け"), |s| tasks::paste_task(s, &task)).is_some() {
-            self.toast(format!("{name}を貼り付けました"), true, false);
-        }
+        self.mutate(|_| format!("{name}の貼り付け"), |s| tasks::paste_task(s, &task));
     }
 
     fn patch(&self, id: &str, mut patch: TaskPatch) {
@@ -907,15 +902,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             a.toast(format!("「{title}」{why}"), false, true);
             return;
         };
+        // カードが列を移るのが見えるので通知は出さない（戻すときは Ctrl+Z）
         let due = target.map(|d| d.format("%Y-%m-%d").to_string());
-        let label = view::format_due(due.as_deref());
-        let name = task_label(&a.state.data.lock(), &id);
-        let patch = TaskPatch { due: Some(due.clone()), ..Default::default() };
-        let moved = a.mutate(|d| format!("{}の期日変更", task_label(d, &id)), |s| tasks::update_task(s, &id, patch));
-        if moved.is_some() {
-            let msg = if due.is_some() { format!("{name}の期日を「{label}」にしました") } else { format!("{name}の期日を外しました") };
-            a.toast(msg, true, false);
-        }
+        let patch = TaskPatch { due: Some(due), ..Default::default() };
+        a.mutate(|d| format!("{}の期日変更", task_label(d, &id)), |s| tasks::update_task(s, &id, patch));
     });
     {
         let dir = dir.clone();
@@ -962,9 +952,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let moved = a.state.data.lock().tasks.iter().any(|t| t.id == id.as_str() && t.project_id != pid);
         a.patch(&id, TaskPatch { project_id: Some(pid), ..Default::default() });
-        // 今の一覧から消えることがあるので、移した先を知らせて「元に戻す」を付ける
+        // 今の一覧から消えることがあるので、移した先だけ知らせる（戻すときは Ctrl+Z）
         if moved {
-            a.toast(format!("{name}を{place}に移動しました"), true, false);
+            a.toast(format!("{name}を{place}に移動しました"), false, false);
         }
     });
     on!(on_set_repeating, |a, id, on| {
