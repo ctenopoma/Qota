@@ -38,6 +38,8 @@ export component AppWindow inherits Window {
     }
     // mini モードでサイドバー（ドロワー）を開いているか
     in-out property <bool> drawer-open;
+    // 初回の操作ヒントを閉じたか（閉じたら ui-state.json に残す）
+    in-out property <bool> hint-dismissed;
 
     // ───── list ─────
     in property <string> list-title;
@@ -107,6 +109,7 @@ export component AppWindow inherits Window {
     callback set-due(id: string, y: int, m: int, d: int);
     callback set-due-in(id: string, days: int);
     callback move-task-to-column(payload: string, column: int);
+    callback dismiss-hint();
     callback clear-due(id: string);
     callback duplicate-task(id: string);
     callback delete-task(id: string);
@@ -350,6 +353,8 @@ export component AppWindow inherits Window {
 
                     if root.view == "today" || root.view == "inbox" || root.view == "project": TaskTable {
                         compact: root.compact;
+                    hint-dismissed <=> root.hint-dismissed;
+                    dismiss-hint => { root.dismiss-hint(); }
                         title: root.list-title;
                         subtitle: root.list-subtitle;
                         active: root.active-tasks;

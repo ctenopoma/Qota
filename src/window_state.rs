@@ -36,11 +36,13 @@ pub struct UiPrefs {
     pub sidebar_open: bool,
     pub archive_open: bool,
     pub today_sort: SortKey,
+    /// 初回の操作ヒントを閉じたか
+    pub hint_dismissed: bool,
 }
 
 impl Default for UiPrefs {
     fn default() -> Self {
-        Self { sidebar_open: true, archive_open: false, today_sort: SortKey::Due }
+        Self { sidebar_open: true, archive_open: false, today_sort: SortKey::Due, hint_dismissed: false }
     }
 }
 
@@ -136,7 +138,7 @@ mod tests {
     fn prefs_round_trip_and_tolerate_missing_fields() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(load_prefs(dir.path()), UiPrefs::default());
-        let p = UiPrefs { sidebar_open: false, archive_open: true, today_sort: SortKey::Priority };
+        let p = UiPrefs { sidebar_open: false, archive_open: true, today_sort: SortKey::Priority, hint_dismissed: true };
         save_prefs(dir.path(), &p).unwrap();
         assert_eq!(load_prefs(dir.path()), p);
         // 古い・欠けたファイルでも既定値で補う

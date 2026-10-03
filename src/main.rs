@@ -767,8 +767,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // サイドバーと「完了済み」の開閉、今日の並び順を戻す。開発用フックで起動したときはクリック位置の前提が崩れるので戻さない
     let dev_hooks = std::env::var_os("QOTA_STEPS").is_some() || std::env::var_os("QOTA_OPEN").is_some();
+    let saved_prefs = window_state::load_prefs(&dir);
+    // 初回の操作ヒント。開発用フックで起動したときは、一覧がずれてクリック位置の前提が崩れるので出さない
+    ui.set_hint_dismissed(dev_hooks || saved_prefs.hint_dismissed);
     if !dev_hooks {
-        let prefs = window_state::load_prefs(&dir);
+        let prefs = saved_prefs;
         ui.set_sidebar_open(prefs.sidebar_open);
         ui.set_archive_open(prefs.archive_open);
         ui.set_today_sort(view::SORT_KEYS.iter().position(|k| *k == prefs.today_sort).unwrap_or(0) as i32);
@@ -921,6 +924,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             a.toast(msg, true, false);
         }
     });
+    {
+        let dir = dir.clone();
+        ui.on_dismiss_hint(move || {
+            let mut prefs = window_state::load_prefs(&dir);
+            prefs.hint_dismissed = true;
+            if let Err(e) = window_state::save_prefs(&dir, &prefs) {
+                eprintln!("failed to save ui-state.json: {e}");
+            }
+        });
+    }
     on!(on_set_due_in, |a, id, days| {
         let due = (view::today() + chrono::Duration::days(days as i64)).format("%Y-%m-%d").to_string();
         a.patch(&id, TaskPatch { due: Some(Some(due)), ..Default::default() });
@@ -1297,6 +1310,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     sidebar_open: ui.get_sidebar_open(),
                     archive_open: ui.get_archive_open(),
                     today_sort: view::SORT_KEYS.get(ui.get_today_sort() as usize).copied().unwrap_or_default(),
+                    hint_dismissed: if dev_hooks { saved_prefs.hint_dismissed } else { ui.get_hint_dismissed() },
                 };
                 if let Err(e) = window_state::save_prefs(&dir, &prefs) {
                     eprintln!("failed to save ui-state.json: {e}");

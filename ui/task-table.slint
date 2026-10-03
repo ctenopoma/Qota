@@ -300,6 +300,9 @@ export component TaskRow inherits Rectangle {
 
 export component TaskTable inherits Rectangle {
     in property <bool> compact;
+    // 初回の操作ヒント（今日の一覧だけに出す）
+    in-out property <bool> hint-dismissed;
+    callback dismiss-hint();
     in property <string> title;
     in property <string> subtitle;
     in property <[TaskItem]> active;
@@ -363,6 +366,32 @@ export component TaskTable inherits Rectangle {
         }
 
         HLine { }
+
+        if root.sortable && !root.hint-dismissed: Rectangle {
+            background: Theme.panel;
+            HorizontalLayout {
+                padding-left: 24px;
+                padding-right: 16px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 8px;
+                Label {
+                    horizontal-stretch: 1;
+                    text: "ヒント  Ctrl+K コマンド ・ Ctrl+/ 検索 ・ Ctrl+Z 取り消し（一覧は設定にあります）";
+                    text-color: Theme.mute;
+                    font-size: Theme.fs-2xs;
+                }
+
+                TextButton {
+                    text: "閉じる";
+                    mono: false;
+                    clicked => {
+                        root.hint-dismissed = true;
+                        root.dismiss-hint();
+                    }
+                }
+            }
+        }
 
         HorizontalLayout {
             padding-left: 24px;
