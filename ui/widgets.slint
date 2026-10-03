@@ -136,6 +136,9 @@ export component Input inherits Rectangle {
     out property <string> preedit-text: ti.preedit-text;
     // 空のときの Ctrl+V で、コピーしたタスクを貼り付ける（新規タスクの入力欄だけ）
     in property <bool> task-paste;
+    // 一覧の上の入力欄（新規タスク）用。↓ で一覧へ移る
+    in property <bool> list-keys;
+    callback nav-down();
     callback accepted(text: string);
     callback edited(text: string);
     callback focus-out(text: string);
@@ -162,6 +165,10 @@ export component Input inherits Rectangle {
                 focus-on-click: false;
                 focus-on-tab-navigation: false;
                 capture-key-pressed(event) => {
+                    if root.list-keys && ti.preedit-text == "" && event.text == Key.DownArrow {
+                        root.nav-down();
+                        return accept;
+                    }
                     if ti.text == "" && ti.preedit-text == "" && event.modifiers.control {
                         if event.text == "y" || event.text == "Y" || ((event.text == "z" || event.text == "Z") && event.modifiers.shift) {
                             Bridge.redo();

@@ -333,6 +333,8 @@ impl App {
         let ui = self.ui();
         ui.set_view(view);
         ui.set_project_id(pid);
+        // キーボードで選んでいた行は、画面が変わったら外す
+        ui.set_list_cursor(-1);
         ui.global::<Bridge>().set_hover_task(SharedString::new());
         self.refresh();
     }
@@ -1271,6 +1273,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 w.dispatch_event(WindowEvent::KeyPressed { text: modifier.clone() });
                 press(key);
                 w.dispatch_event(WindowEvent::KeyReleased { text: modifier });
+            } else if let Some(name) = step.strip_prefix("key:") {
+                // key:tab / key:shift+tab / key:up / key:down / key:left / key:right / key:home / key:end /
+                // key:space / key:delete / key:backspace / key:enter / key:esc  特殊キーを 1 回押す
+                let (shift, name) = match name.strip_prefix("shift+") {
+                    Some(rest) => (true, rest),
+                    None => (false, name),
+                };
+                let key: SharedString = match name {
+                    "tab" => Key::Tab.into(),
+                    "up" => Key::UpArrow.into(),
+                    "down" => Key::DownArrow.into(),
+                    "left" => Key::LeftArrow.into(),
+                    "right" => Key::RightArrow.into(),
+                    "home" => Key::Home.into(),
+                    "end" => Key::End.into(),
+                    "space" => " ".into(),
+                    "delete" => Key::Delete.into(),
+                    "backspace" => Key::Backspace.into(),
+                    "enter" => Key::Return.into(),
+                    "esc" => Key::Escape.into(),
+                    _ => return,
+                };
+                if shift {
+                    w.dispatch_event(WindowEvent::KeyPressed { text: Key::Shift.into() });
+                }
+                press(key);
+                if shift {
+                    w.dispatch_event(WindowEvent::KeyReleased { text: Key::Shift.into() });
+                }
             } else if step == "esc" {
                 press(Key::Escape.into());
             } else if step == "enter" {

@@ -40,6 +40,10 @@ export component AppWindow inherits Window {
     in-out property <bool> drawer-open;
     // 初回の操作ヒントを閉じたか（閉じたら ui-state.json に残す）
     in-out property <bool> hint-dismissed;
+    // キーボードで選んでいる一覧の行（active-tasks の何番目か。-1 なら無し）
+    in-out property <int> list-cursor: -1;
+    // Ctrl+N の要求（新規タスクの入力欄へ移る）
+    in-out property <bool> compose-request;
 
     // ───── list ─────
     in property <string> list-title;
@@ -167,6 +171,30 @@ export component AppWindow inherits Window {
         keys.focus();
     }
 
+    // 一覧のキー操作（↑↓ Enter Space Delete）を受けてよい状態か
+    pure function list-keys-on() -> bool {
+        (root.view == "today" || root.view == "project") && !root.detail-open && !root.palette-open
+            && !root.search-open && !root.notif-open && !root.day-open && !root.confirm-open
+    }
+
+    // 一覧の行が減ったときに、選んでいる行が範囲を越えないようにする
+    pure function cur() -> int {
+        min(root.list-cursor, root.active-tasks.length - 1)
+    }
+
+    function focus-composer() {
+        root.close-overlays();
+        if (root.view != "today" && root.view != "project") {
+            root.navigate("today", "");
+        }
+        root.compose-request = true;
+    }
+
+    function go-to(v: string) {
+        root.close-overlays();
+        root.navigate(v, "");
+    }
+
     function open-search() {
         root.search-query("");
         root.search-open = true;
@@ -207,6 +235,109 @@ export component AppWindow inherits Window {
             keys: @keys(Escape);
             activated => {
                 root.close-overlays();
+            }
+        }
+
+
+        // ───── キーボードだけでの操作 ─────
+        KeyBinding {
+            keys: @keys(Control + N);
+            enabled: !root.confirm-open;
+            activated => {
+                root.focus-composer();
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "1");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("today"); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "2");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("upcoming"); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "3");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("calendar"); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "4");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("projects"); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "5");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("tags"); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "6");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("settings"); }
+        }
+
+        // 一覧の行を選ぶ。入力欄や詳細パネルを開いているときは、そちらが先に受け取る
+        KeyBinding {
+            keys: @keys(UpArrow);
+            enabled: root.list-keys-on() && root.active-tasks.length > 0;
+            activated => {
+                root.list-cursor = max(0, root.cur() - 1);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(DownArrow);
+            enabled: root.list-keys-on() && root.active-tasks.length > 0;
+            activated => {
+                root.list-cursor = min(root.active-tasks.length - 1, root.cur() + 1);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Home);
+            enabled: root.list-keys-on() && root.active-tasks.length > 0;
+            activated => {
+                root.list-cursor = 0;
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(End);
+            enabled: root.list-keys-on() && root.active-tasks.length > 0;
+            activated => {
+                root.list-cursor = root.active-tasks.length - 1;
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Return);
+            enabled: root.list-keys-on() && root.cur() >= 0;
+            activated => {
+                root.open-task(root.active-tasks[root.cur()].id);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Space);
+            enabled: root.list-keys-on() && root.cur() >= 0;
+            activated => {
+                root.toggle-task(root.active-tasks[root.cur()].id);
+            }
+        }
+
+        KeyBinding {
+            keys: @keys(Delete);
+            enabled: root.list-keys-on() && root.cur() >= 0;
+            activated => {
+                root.delete-task(root.active-tasks[root.cur()].id);
             }
         }
 
@@ -353,6 +484,12 @@ export component AppWindow inherits Window {
 
                     if root.view == "today" || root.view == "project": TaskTable {
                         compact: root.compact;
+                    cursor: root.cur();
+                    compose-request <=> root.compose-request;
+                    leave-composer => {
+                        root.list-cursor = max(0, root.list-cursor);
+                        keys.focus();
+                    }
                     hint-dismissed <=> root.hint-dismissed;
                     dismiss-hint => { root.dismiss-hint(); }
                         title: root.list-title;

@@ -92,6 +92,8 @@ component PriorityButton inherits Rectangle {
 
 export component TaskRow inherits Rectangle {
     in property <TaskItem> task;
+    // キーボードで選んでいる行（↑↓ で動かす）
+    in property <bool> cursor;
     // 狭いウィンドウ（mini モード）では、プロジェクト・タグのバッジを隠してタイトルに幅を回す
     in property <bool> compact;
     callback open(id: string);
@@ -121,7 +123,13 @@ export component TaskRow inherits Rectangle {
                 }
             }
             Rectangle {
-                background: hover.has-hover ? Theme.panel2 : transparent;
+                background: hover.has-hover || root.cursor ? Theme.panel2 : transparent;
+            }
+
+            if root.cursor: Rectangle {
+                x: 0;
+                width: 3px;
+                background: Theme.accent;
             }
 
             // grid-cols-[24px_24px_1fr_auto_64px_24px] gap-2 px-6
@@ -300,6 +308,23 @@ export component TaskRow inherits Rectangle {
 
 export component TaskTable inherits Rectangle {
     in property <bool> compact;
+    // キーボードで選んでいる行の番号（active の何番目か。-1 なら無し）
+    in property <int> cursor: -1;
+    // Ctrl+N で新規タスクの入力欄へ移る。一覧が出来る前に要求されても、出来たときに移る
+    in-out property <bool> compose-request;
+    callback leave-composer();
+    changed compose-request => {
+        if root.compose-request {
+            composer.focus();
+            root.compose-request = false;
+        }
+    }
+    init => {
+        if root.compose-request {
+            composer.focus();
+            root.compose-request = false;
+        }
+    }
     // 初回の操作ヒント（今日の一覧だけに出す）
     in-out property <bool> hint-dismissed;
     callback dismiss-hint();
@@ -377,7 +402,7 @@ export component TaskTable inherits Rectangle {
                 spacing: 8px;
                 Label {
                     horizontal-stretch: 1;
-                    text: "ヒント  Ctrl+K コマンド ・ Ctrl+/ 検索 ・ Ctrl+Z 取り消し（一覧は設定にあります）";
+                    text: "ヒント  Ctrl+K コマンド ・ Ctrl+N 新規 ・ ↑↓ Enter Space で一覧を操作（一覧は設定にあります）";
                     text-color: Theme.mute;
                     font-size: Theme.fs-2xs;
                 }
@@ -399,6 +424,8 @@ export component TaskTable inherits Rectangle {
             padding-top: 8px;
             padding-bottom: 8px;
             composer := Input {
+                list-keys: true;
+                nav-down => { root.leave-composer(); }
                 placeholder: "+ 新しいタスク (Enter で追加)";
                 task-paste: true;
                 accepted(text) => {
@@ -432,7 +459,9 @@ export component TaskTable inherits Rectangle {
                     }
                 }
 
-                for t in root.active: TaskRow {
+                for t[i] in root.active: TaskRow {
+                    // 入力欄に文字を打っているときは、行の選択を隠す（Enter が追加に効くのが分かるように）
+                    cursor: i == root.cursor && !composer.has-focus;
                     compact: root.compact;
                     task: t;
                     open(id) => { root.open(id); }
