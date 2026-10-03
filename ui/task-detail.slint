@@ -279,6 +279,11 @@ export component TaskDetail inherits Rectangle {
                                             }
 
                                             help-ta := TouchArea { }
+
+                                            // 標準のツールチップ。カーソルを合わせて少し待つと出る
+                                            Tooltip {
+                                                text: @markdown("**「変更」は題名・メモなどの反映先**\n\n- この回だけ / 以降すべて（既定はこの回だけ）\n- 頻度・終了日を変えると、以降の回を作り直します\n- 終了日まで先に作ります（最大 255 件）\n- 終了日が空だと繰り返しません");
+                                            }
                                         }
                                     }
                                 }
@@ -591,54 +596,6 @@ export component TaskDetail inherits Rectangle {
                     clicked => {
                         root.delete(root.data.id);
                     }
-                }
-            }
-        }
-
-        // 繰り返しの ? にカーソルを合わせたときの説明。? の下に出し、パネルからはみ出さないよう寄せる
-        if help-ta.has-hover: Rectangle {
-            width: min(320px, panel.width - 16px);
-            height: help-lines.preferred-height + 20px;
-            x: max(8px, min(help-mark.absolute-position.x - panel.absolute-position.x + 18px - self.width, panel.width - self.width - 8px));
-            y: help-mark.absolute-position.y - panel.absolute-position.y + 26px;
-            background: Theme.panel2;
-            border-radius: 6px;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-blur: 16px;
-            drop-shadow-offset-y: 4px;
-            drop-shadow-color: #00000060;
-
-            help-lines := VerticalLayout {
-                padding: 10px;
-                spacing: 4px;
-                Label {
-                    text: "「変更」は題名・メモなどの反映先です";
-                    font-size: Theme.fs-2xs;
-                }
-
-                Label {
-                    text: "この回だけ / 以降すべて（既定はこの回だけ）";
-                    text-color: Theme.mute;
-                    font-size: Theme.fs-2xs;
-                }
-
-                Label {
-                    text: "頻度・終了日を変えると、以降の回を作り直します";
-                    text-color: Theme.mute;
-                    font-size: Theme.fs-2xs;
-                }
-
-                Label {
-                    text: "終了日まで先に作ります（最大 255 件）";
-                    text-color: Theme.mute;
-                    font-size: Theme.fs-2xs;
-                }
-
-                Label {
-                    text: "終了日が空だと繰り返しません";
-                    text-color: Theme.mute;
-                    font-size: Theme.fs-2xs;
                 }
             }
         }
