@@ -338,6 +338,8 @@ export component TaskTable inherits Rectangle {
     in property <bool> sortable;
     in-out property <int> sort-index;
     callback sort-changed();
+    // 今日の一覧から、タイムチャートへ切り替える
+    callback show-chart();
 
     callback add-task(title: string);
     callback open(id: string);
@@ -371,6 +373,16 @@ export component TaskTable inherits Rectangle {
             }
             Rectangle {
                 horizontal-stretch: 1;
+            }
+
+            if root.sortable: TextButton {
+                focusable: true;
+                text: "チャート";
+                mono: false;
+                bordered: true;
+                clicked => {
+                    root.show-chart();
+                }
             }
 
             if root.sortable: Select {

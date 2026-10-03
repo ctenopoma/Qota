@@ -58,6 +58,9 @@ pub fn sample_data() -> AppData {
             density: Density::Comfortable,
             row_height: 12,
             week_start: WeekStart::Mon,
+            day_start_hour: 6,
+            day_end_hour: 24,
         },
+        plans: vec![],
     }
 }

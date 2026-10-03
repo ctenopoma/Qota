@@ -8,6 +8,7 @@ pub enum Error {
     #[error("invalid input: {0}")] InvalidInput(String),
     #[error("schema version unsupported: {0}")] UnsupportedSchema(u32),
     #[error("dialog cancelled")] Cancelled,
+    #[error("no free time slot")] NoSpace,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

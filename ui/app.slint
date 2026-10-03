@@ -2,14 +2,15 @@
 import { Palette } from "std-widgets.slint";
 import { Theme, Bridge } from "theme.slint";
 import { Label, TextButton } from "widgets.slint";
-import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell } from "types.slint";
+import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanBlockItem } from "types.slint";
 import { Sidebar } from "sidebar.slint";
 import { TaskTable } from "task-table.slint";
+import { TimeChart } from "timechart.slint";
 import { TaskDetail } from "task-detail.slint";
 import { SettingsPage, CommandPalette, ConfirmDialog } from "pages.slint";
 import { UpcomingView, ProjectsView, TagsView, CalendarView, DayDialog, SearchPanel, NotifPanel } from "views.slint";
 
-export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell }
+export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanBlockItem }
 
 export component AppWindow inherits Window {
     title: "Qota";
@@ -40,6 +41,24 @@ export component AppWindow inherits Window {
     in-out property <bool> drawer-open;
     // 初回の操作ヒントを閉じたか（閉じたら ui-state.json に残す）
     in-out property <bool> hint-dismissed;
+    // 今日をタイムチャートで見ているか（ui-state.json に残す）
+    in-out property <bool> today-chart;
+    in property <[PlanBlockItem]> plan-blocks;
+    in property <[TaskItem]> plan-unplaced;
+    in property <int> chart-slots;
+    in property <int> chart-start-hour;
+    in property <float> chart-now-slot: -1;
+    // 設定: タイムチャートの時間軸（時）
+    in property <int> day-start-hour: 6;
+    in property <int> day-end-hour: 24;
+    callback set-day-range(start: int, end: int);
+    callback plan-drop(payload: string, slot: int, grab: int);
+    callback plan-place(task-id: string);
+    callback plan-arrange();
+    callback plan-resize(id: string, len-slots: int);
+    callback plan-move-by(id: string, delta-slots: int);
+    callback plan-resize-by(id: string, delta-slots: int);
+    callback plan-remove(id: string);
     // キーボードで選んでいる一覧の行（active-tasks の何番目か。-1 なら無し）
     in-out property <int> list-cursor: -1;
     // Ctrl+N の要求（新規タスクの入力欄へ移る）
@@ -173,7 +192,7 @@ export component AppWindow inherits Window {
 
     // 一覧のキー操作（↑↓ Enter Space Delete）を受けてよい状態か
     pure function list-keys-on() -> bool {
-        (root.view == "today" || root.view == "project") && !root.detail-open && !root.palette-open
+        ((root.view == "today" && !root.today-chart) || root.view == "project") && !root.detail-open && !root.palette-open
             && !root.search-open && !root.notif-open && !root.day-open && !root.confirm-open
     }
 
@@ -240,6 +259,21 @@ export component AppWindow inherits Window {
 
 
         // ───── キーボードだけでの操作 ─────
+        // 今日の一覧とタイムチャートを切り替える（今日以外にいれば今日へ移る）
+        KeyBinding {
+            keys: @keys(Control + T);
+            enabled: !root.confirm-open;
+            activated => {
+                root.close-overlays();
+                if (root.view != "today") {
+                    root.navigate("today", "");
+                    root.today-chart = true;
+                } else {
+                    root.today-chart = !root.today-chart;
+                }
+            }
+        }
+
         KeyBinding {
             keys: @keys(Control + N);
             enabled: !root.confirm-open;
@@ -482,7 +516,26 @@ export component AppWindow inherits Window {
                 Rectangle {
                     horizontal-stretch: 1;
 
-                    if root.view == "today" || root.view == "project": TaskTable {
+                    if root.view == "today" && root.today-chart: TimeChart {
+                    blocks: root.plan-blocks;
+                    unplaced: root.plan-unplaced;
+                    slots: root.chart-slots;
+                    start-hour: root.chart-start-hour;
+                    now-slot: root.chart-now-slot;
+                    compact: root.compact;
+                    drop-payload(p, slot, grab) => { root.plan-drop(p, slot, grab); }
+                    place(id) => { root.plan-place(id); }
+                    arrange => { root.plan-arrange(); }
+                    open(id) => { root.open-task(id); }
+                    resize(id, n) => { root.plan-resize(id, n); }
+                    move-by(id, d) => { root.plan-move-by(id, d); }
+                    resize-by(id, d) => { root.plan-resize-by(id, d); }
+                    remove(id) => { root.plan-remove(id); }
+                    show-list => { root.today-chart = false; }
+                }
+
+                if (root.view == "today" && !root.today-chart) || root.view == "project": TaskTable {
+                    show-chart => { root.today-chart = true; }
                         compact: root.compact;
                     cursor: root.cur();
                     compose-request <=> root.compose-request;
@@ -521,7 +574,10 @@ export component AppWindow inherits Window {
                         }
                         export-json => { root.export-json(); }
                         import-json => { root.import-json(); }
-                        latest-backup: root.latest-backup;
+                        day-start-hour: root.day-start-hour;
+                    day-end-hour: root.day-end-hour;
+                    set-day-range(s, e) => { root.set-day-range(s, e); }
+                    latest-backup: root.latest-backup;
                         restore-backup => { root.restore-backup(); }
                         open-backups => { root.open-backups(); }
                         reset => { root.reset-data(); }

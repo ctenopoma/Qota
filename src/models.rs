@@ -79,6 +79,29 @@ pub struct Settings {
     pub density: Density,
     pub row_height: u8,
     pub week_start: WeekStart,
+    /// 今日のタイムチャートの時間軸の範囲（時）。既定は 6〜24 時
+    #[serde(default = "default_day_start_hour")]
+    pub day_start_hour: u8,
+    #[serde(default = "default_day_end_hour")]
+    pub day_end_hour: u8,
+}
+
+fn default_day_start_hour() -> u8 { 6 }
+fn default_day_end_hour() -> u8 { 24 }
+
+/// 今日のタイムチャートに置いた計画の棒。日付ごとに残す（あとで計画と実績を分析するため、題名も控えておく）
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanBlock {
+    pub id: String,
+    pub task_id: String,
+    pub title: String,
+    /// YYYY-MM-DD
+    pub date: String,
+    /// 0 時からの分（15 の倍数）
+    pub start_min: u16,
+    /// 長さ（分。15 の倍数）
+    pub duration_min: u16,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -105,6 +128,9 @@ pub struct AppData {
     pub projects: Vec<Project>,
     pub tags: Vec<Tag>,
     pub settings: Settings,
+    /// タイムチャートの計画。古いファイルには無いので、無ければ空
+    #[serde(default)]
+    pub plans: Vec<PlanBlock>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -170,4 +196,6 @@ pub struct SettingsPatch {
     pub density: Option<Density>,
     pub row_height: Option<u8>,
     pub week_start: Option<WeekStart>,
+    pub day_start_hour: Option<u8>,
+    pub day_end_hour: Option<u8>,
 }

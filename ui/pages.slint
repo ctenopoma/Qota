@@ -1,7 +1,7 @@
 // 旧 Tauri 版の src/pages/Settings.tsx / src/components/CommandPalette.tsx の移植
 import { ScrollView, AboutSlint } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { Label, TextButton, Input, HLine, KeyFocus, FocusRing } from "widgets.slint";
+import { Label, TextButton, Input, HLine, KeyFocus, FocusRing, Select } from "widgets.slint";
 import { Command } from "types.slint";
 
 component Card inherits Rectangle {
@@ -93,6 +93,10 @@ component SettingsButton inherits Rectangle {
 export component SettingsPage inherits Rectangle {
     in property <bool> dark;
     in property <string> data-path;
+    // タイムチャートの時間軸（時）
+    in property <int> day-start-hour: 6;
+    in property <int> day-end-hour: 24;
+    callback set-day-range(start: int, end: int);
     // いちばん新しいバックアップの日付。無ければ空
     in property <string> latest-backup;
     callback set-dark(dark: bool);
@@ -143,6 +147,43 @@ export component SettingsPage inherits Rectangle {
             }
 
             Card {
+                title: "タイムチャートの時間軸";
+                description: "今日のタイムチャートに出す時間の範囲です（15 分刻み）";
+                has-actions: true;
+                Label {
+                    text: "開始";
+                    text-color: Theme.mute;
+                    font-size: Theme.fs-2xs;
+                    mono: true;
+                }
+
+                Select {
+                    width: 88px;
+                    options: ["0:00", "1:00", "2:00", "3:00", "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"];
+                    current-index: root.day-start-hour;
+                    selected(i) => {
+                        root.set-day-range(i, root.day-end-hour);
+                    }
+                }
+
+                Label {
+                    text: "終了";
+                    text-color: Theme.mute;
+                    font-size: Theme.fs-2xs;
+                    mono: true;
+                }
+
+                Select {
+                    width: 88px;
+                    options: ["1:00", "2:00", "3:00", "4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "24:00"];
+                    current-index: root.day-end-hour - 1;
+                    selected(i) => {
+                        root.set-day-range(root.day-start-hour, i + 1);
+                    }
+                }
+            }
+
+            Card {
                 title: "ショートカット";
                 has-actions: false;
                 description: "Ctrl+K コマンドパレット / Ctrl+/ 検索";
@@ -152,6 +193,7 @@ export component SettingsPage inherits Rectangle {
                     "Alt+← / Alt+→ 前に見ていた画面へ戻る・進む（マウスの戻る・進むボタンも可）",
                     "Esc 開いているパネルを閉じる / Tab・Shift+Tab 項目から項目へ移る",
                     "詳細パネルでは Tab で各項目へ。優先度などの選択は ↑ ↓、日付は Enter で開いて ← → ↑ ↓ Enter",
+                    "Ctrl+T 今日の一覧とタイムチャートの切り替え",
                     "Ctrl+N 新しいタスクの入力欄へ / Ctrl+1〜6 今日・今後・カレンダー・",
                     "　プロジェクト・タグ・設定へ移る",
                     "↑ ↓ 一覧のタスクを選ぶ / Enter 詳細 / Space 完了 / Delete 削除",

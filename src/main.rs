@@ -17,10 +17,10 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
-use chrono::{Datelike, Local, NaiveDate};
-use slint::{ComponentHandle, ModelRc, SharedString, Timer, VecModel};
+use chrono::{Datelike, Local, NaiveDate, Timelike};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
 
-use commands::{io, projects, search, settings, subtasks, tags, tasks};
+use commands::{io, plan, projects, search, settings, subtasks, tags, tasks};
 use error::Error;
 use models::*;
 use store::AppState;
@@ -46,6 +46,9 @@ struct App {
     search_results: Rc<VecModel<TaskItem>>,
     notif_overdue: Rc<VecModel<TaskItem>>,
     notif_today: Rc<VecModel<TaskItem>>,
+    // 今日のタイムチャート: 計画の棒と、まだ置いていないタスク
+    plan_blocks: Rc<VecModel<PlanBlockItem>>,
+    plan_unplaced: Rc<VecModel<TaskItem>>,
     // カレンダーで表示中の年月と、一覧を開いている日
     cal_month: Cell<(i32, i32)>,
     open_day: Cell<Option<(i32, i32, i32)>>,
@@ -136,6 +139,9 @@ impl App {
         ui.set_list_subtitle(subtitle.into());
         view::sync(&self.active, active.iter().map(|t| view::task_item(t, &data, &expanded)).collect());
         view::sync(&self.done, done.iter().map(|t| view::task_item(t, &data, &expanded)).collect());
+        if route == "today" {
+            self.sync_chart(&data, &active);
+        }
 
         view::sync(
             &self.projects,
@@ -257,9 +263,13 @@ impl App {
     }
 
     fn report(&self, e: Error) {
-        if !matches!(e, Error::Cancelled) {
-            eprintln!("error: {e}");
-            self.toast(format!("エラー: {e}"), false, true);
+        match e {
+            Error::Cancelled => {}
+            Error::NoSpace => self.toast("計画に置ける空き時間がありません".into(), false, true),
+            _ => {
+                eprintln!("error: {e}");
+                self.toast(format!("エラー: {e}"), false, true);
+            }
         }
     }
 
@@ -312,6 +322,7 @@ impl App {
 
     /// 1 分ごとに呼ぶ。日付が変わっていたら「今日」を差し替えて描き直す（入力中の内容や開いているパネルは触らない）
     fn check_date(&self) {
+        self.update_now_line();
         let t = view::today();
         if t != self.today.get() {
             self.today.set(t);
@@ -511,6 +522,72 @@ impl App {
             self.refresh();
             self.toast(format!("{name}を読み込みました"), true, false);
         }
+    }
+
+    /// 今日のタイムチャート用のモデルと時間軸を組み直す
+    fn sync_chart(&self, data: &AppData, active: &[&Task]) {
+        let ui = self.ui();
+        let day = plan::Day::from_settings(&data.settings);
+        let today = self.today.get().format("%Y-%m-%d").to_string();
+        let slot = plan::SLOT as i32;
+        let mut blocks = Vec::new();
+        for b in data.plans.iter().filter(|b| b.date == today) {
+            let Some(t) = data.tasks.iter().find(|t| t.id == b.task_id) else { continue };
+            // 時間軸の外にある棒（軸の範囲を狭めたとき）は出さない。データは残す
+            if b.start_min < day.start || b.start_min + b.duration_min > day.end {
+                continue;
+            }
+            blocks.push(PlanBlockItem {
+                id: b.id.as_str().into(),
+                task_id: b.task_id.as_str().into(),
+                title: t.title.as_str().into(),
+                start_slot: (b.start_min - day.start) as i32 / slot,
+                len_slots: b.duration_min as i32 / slot,
+                done: t.status == TaskStatus::Done,
+            });
+        }
+        let placed: HashSet<&str> = data.plans.iter().filter(|b| b.date == today).map(|b| b.task_id.as_str()).collect();
+        let none = HashSet::new();
+        let unplaced: Vec<TaskItem> = active.iter()
+            .filter(|t| !placed.contains(t.id.as_str()))
+            .map(|t| view::task_item(t, data, &none))
+            .collect();
+        view::sync(&self.plan_blocks, blocks);
+        view::sync(&self.plan_unplaced, unplaced);
+        ui.set_chart_slots(((day.end - day.start) / plan::SLOT) as i32);
+        ui.set_chart_start_hour((day.start / 60) as i32);
+        ui.set_day_start_hour(data.settings.day_start_hour as i32);
+        ui.set_day_end_hour(data.settings.day_end_hour as i32);
+        self.set_now_line(day);
+    }
+
+    /// 「いま」の線の位置（時間軸の先頭からの 15 分の枠の数。軸の外なら -1）。1 分ごとに呼ぶ
+    fn update_now_line(&self) {
+        // refresh の中（データのロックを持っている間）から呼ばないこと。そちらは set_now_line に日を渡す
+        let day = plan::Day::from_settings(&self.state.data.lock().settings);
+        self.set_now_line(day);
+    }
+
+    fn set_now_line(&self, day: plan::Day) {
+        let now = Local::now();
+        let minutes = now.hour() as f32 * 60.0 + now.minute() as f32 + now.second() as f32 / 60.0;
+        let pos = (minutes - day.start as f32) / plan::SLOT as f32;
+        let slots = (day.end - day.start) as f32 / plan::SLOT as f32;
+        self.ui().set_chart_now_slot(if pos >= 0.0 && pos <= slots { pos } else { -1.0 });
+    }
+
+    /// 今日の日付と、枠の番号に当たる時刻（0 時からの分）
+    fn plan_target(&self, slot: i32) -> (String, u16) {
+        let day = plan::Day::from_settings(&self.state.data.lock().settings);
+        let date = self.today.get().format("%Y-%m-%d").to_string();
+        (date, day.start + slot.max(0) as u16 * plan::SLOT)
+    }
+
+    /// いまの時刻（15 分単位に切り上げ。0 時からの分）
+    fn now_rounded_min(&self) -> u16 {
+        let now = Local::now();
+        let m = now.hour() as u16 * 60 + now.minute() as u16;
+        m.div_ceil(plan::SLOT) * plan::SLOT
     }
 
     fn palette_items(&self, q: &str) -> Vec<Command> {
@@ -739,6 +816,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         search_results: Rc::new(VecModel::default()),
         notif_overdue: Rc::new(VecModel::default()),
         notif_today: Rc::new(VecModel::default()),
+        plan_blocks: Rc::new(VecModel::default()),
+        plan_unplaced: Rc::new(VecModel::default()),
         cal_month: Cell::new({
             let t = view::today();
             (t.year(), t.month() as i32)
@@ -761,6 +840,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初回の操作ヒント。開発用フックで起動したときは、一覧がずれてクリック位置の前提が崩れるので出さない
     ui.set_hint_dismissed(dev_hooks || saved_prefs.hint_dismissed);
     if !dev_hooks {
+        ui.set_today_chart(saved_prefs.today_chart);
+    }
+    if !dev_hooks {
         let prefs = saved_prefs;
         ui.set_sidebar_open(prefs.sidebar_open);
         ui.set_archive_open(prefs.archive_open);
@@ -779,6 +861,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_search_results(app.search_results.clone().into());
     ui.set_notif_overdue(app.notif_overdue.clone().into());
     ui.set_notif_today(app.notif_today.clone().into());
+    ui.set_plan_blocks(app.plan_blocks.clone().into());
+    ui.set_plan_unplaced(app.plan_unplaced.clone().into());
     ui.set_data_path(app.state.path.to_string_lossy().as_ref().into());
 
     let bridge = ui.global::<Bridge>();
@@ -919,6 +1003,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // ───── time chart ─────
+    on!(on_plan_drop, |a, payload, slot, grab| {
+        // 棒を動かすときは、つかんだ位置の分だけ上端を戻す（未配置から落とすときは、ポインタの位置が上端）
+        let slot = if payload.starts_with("block:") { slot - grab } else { slot };
+        let (date, desired) = a.plan_target(slot);
+        if let Some(id) = payload.strip_prefix("task:") {
+            let id = id.to_string();
+            a.mutate(
+                |d| format!("{}を計画に置く", task_label(d, &id)),
+                |s| plan::place_task(s, &id, &date, desired, plan::DEFAULT_LEN),
+            );
+        } else if let Some(id) = payload.strip_prefix("block:") {
+            let id = id.to_string();
+            a.mutate(|_| "計画の棒の移動".into(), |s| plan::move_block(s, &id, desired));
+        }
+    });
+    on!(on_plan_place, |a, id| {
+        let date = a.today.get().format("%Y-%m-%d").to_string();
+        let from = a.now_rounded_min();
+        let id = id.to_string();
+        a.mutate(
+            |d| format!("{}を計画に置く", task_label(d, &id)),
+            |s| plan::place_task(s, &id, &date, from, plan::DEFAULT_LEN),
+        );
+    });
+    on!(on_plan_arrange, |a| {
+        let date = a.today.get().format("%Y-%m-%d").to_string();
+        let from = a.now_rounded_min();
+        let ids: Vec<String> = a.plan_unplaced.iter().map(|t| t.id.to_string()).collect();
+        if ids.is_empty() {
+            return;
+        }
+        a.mutate(|_| "計画を順に並べる".into(), |s| match plan::arrange_from(s, &date, from, &ids)? {
+            0 => Err(Error::NoSpace),
+            n => Ok(n),
+        });
+    });
+    on!(on_plan_resize, |a, id, n| {
+        let id = id.to_string();
+        a.mutate(|_| "計画の長さの変更".into(), |s| plan::resize_block(s, &id, n.max(1) as u16 * plan::SLOT));
+    });
+    on!(on_plan_move_by, |a, id, d| {
+        let id = id.to_string();
+        a.mutate(|_| "計画の棒の移動".into(), |s| plan::shift_block(s, &id, d * plan::SLOT as i32));
+    });
+    on!(on_plan_resize_by, |a, id, d| {
+        let id = id.to_string();
+        a.mutate(|_| "計画の長さの変更".into(), |s| {
+            let cur = s.data.lock().plans.iter().find(|b| b.id == id).map(|b| b.duration_min as i32).unwrap_or(plan::SLOT as i32);
+            plan::resize_block(s, &id, (cur + d * plan::SLOT as i32).max(plan::SLOT as i32) as u16)
+        });
+    });
+    on!(on_plan_remove, |a, id| {
+        let id = id.to_string();
+        a.mutate(|_| "計画の棒を外す".into(), |s| plan::remove_block(s, &id));
+    });
+    on!(on_set_day_range, |a, start, end| {
+        // 終わりが始まり以前になる選び方は、終わりを 1 時間後にそろえる
+        let end = if end <= start { (start + 1).min(24) } else { end };
+        a.mutate(|_| "タイムチャートの時間軸の変更".into(), |s| {
+            settings::update_settings(s, SettingsPatch {
+                day_start_hour: Some(start as u8),
+                day_end_hour: Some(end as u8),
+                ..Default::default()
+            })
+        });
+    });
     on!(on_set_due_in, |a, id, days| {
         let due = (view::today() + chrono::Duration::days(days as i64)).format("%Y-%m-%d").to_string();
         a.patch(&id, TaskPatch { due: Some(Some(due)), ..Default::default() });
@@ -1188,6 +1339,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_search_open(true);
         }
         Ok("notif") => ui.set_notif_open(true),
+        Ok("chart") => ui.set_today_chart(true),
         Ok("confirm") => ui.invoke_reset_data(),
         Ok("toast") => app.toast("「サンプル」を削除しました".into(), true, false),
         _ => {}
@@ -1325,6 +1477,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     archive_open: ui.get_archive_open(),
                     today_sort: view::SORT_KEYS.get(ui.get_today_sort() as usize).copied().unwrap_or_default(),
                     hint_dismissed: if dev_hooks { saved_prefs.hint_dismissed } else { ui.get_hint_dismissed() },
+                    today_chart: if dev_hooks { saved_prefs.today_chart } else { ui.get_today_chart() },
                 };
                 if let Err(e) = window_state::save_prefs(&dir, &prefs) {
                     eprintln!("failed to save ui-state.json: {e}");

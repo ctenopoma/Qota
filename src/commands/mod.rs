@@ -9,3 +9,4 @@ pub mod tags;
 pub mod settings;
 pub mod search;
 pub mod io;
+pub mod plan;

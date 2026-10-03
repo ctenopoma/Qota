@@ -87,6 +87,16 @@ export struct Column {
     tasks: [TaskItem],
 }
 
+// 今日のタイムチャートの計画の棒。start-slot は時間軸の先頭から数えた 15 分の枠の番号
+export struct PlanBlockItem {
+    id: string,
+    task-id: string,
+    title: string,
+    start-slot: int,
+    len-slots: int,
+    done: bool,
+}
+
 // カレンダーの 1 マス。day == 0 は月初めの前の空白
 export struct CalCell {
     year: int,
