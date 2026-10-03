@@ -131,6 +131,17 @@ export component SettingsPage inherits Rectangle {
             }
 
             Card {
+                title: "ショートカット";
+                description: "Ctrl+K コマンドパレット / Ctrl+/ 検索";
+                lines: [
+                    "Ctrl+Z 取り消し / Ctrl+Y（Ctrl+Shift+Z）やり直し",
+                    "Ctrl+C / Ctrl+V マウスの乗っているタスクのコピー・貼り付け",
+                    "Alt+← / Alt+→ 前に見ていた画面へ戻る・進む（マウスの戻る・進むボタンも可）",
+                    "Esc 開いているパネルを閉じる",
+                ];
+            }
+
+            Card {
                 title: "データのエクスポート";
                 description: "すべてのタスク・プロジェクト・タグを JSON で出力します";
                 SettingsButton {

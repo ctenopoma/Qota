@@ -134,14 +134,14 @@ export component Sidebar inherits Rectangle {
                     HorizontalLayout {
                         spacing: 4px;
                         IconButton {
-                            text: "/";
+                            text: "検索";
                             clicked => {
                                 root.search();
                             }
                         }
 
                         IconButton {
-                            text: "!";
+                            text: "通知";
                             badge: root.overdue-count;
                             clicked => {
                                 root.notif();

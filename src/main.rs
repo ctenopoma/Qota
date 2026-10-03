@@ -132,7 +132,7 @@ impl App {
             visible.iter().partition(|t| t.status == TaskStatus::Done);
         let subtitle = match route.as_str() {
             "inbox" => "プロジェクト未割当".to_string(),
-            "project" => format!("{} todo", active.len()),
+            "project" => format!("{} 件", active.len()),
             _ => String::new(),
         };
         ui.set_list_title(title.into());
@@ -660,7 +660,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Some(_instance_lock) = instance::lock_or_activate(&dir)? else {
         return Ok(());
     };
-    let state = AppState::load_or_init(dir.clone())?;
+    let state = match AppState::load_or_init(dir.clone()) {
+        Ok(s) => s,
+        Err(e) => {
+            // 読めないときは何も出さずに終わらず、原因とバックアップの場所を伝える
+            rfd::MessageDialog::new()
+                .set_title("Qota")
+                .set_level(rfd::MessageLevel::Error)
+                .set_description(format!(
+                    "データを読み込めませんでした。
+{e}
+
+{} の qota.json が壊れている可能性があります。backups フォルダの最新のファイルを qota.json に置き換えると戻せます。",
+                    dir.display()
+                ))
+                .show();
+            return Err(e.into());
+        }
+    };
     let ui = AppWindow::new()?;
 
     // 起動時の大きさを画面の作業領域に収め、前回の大きさと最大化を戻す

@@ -139,7 +139,7 @@ export component TaskDetail inherits Rectangle {
                             }
 
                             TextButton {
-                                text: root.data.done ? "done" : "todo";
+                                text: root.data.done ? "完了" : "未完了";
                                 text-color: Theme.ink;
                                 clicked => {
                                     root.toggle-status(root.data.id);
@@ -156,7 +156,7 @@ export component TaskDetail inherits Rectangle {
 
                             Select {
                                 horizontal-stretch: 1;
-                                options: ["–", "high", "medium", "low"];
+                                options: ["なし", "高", "中", "低"];
                                 current-index: root.data.priority;
                                 selected(i) => {
                                     root.set-priority(root.data.id, i);

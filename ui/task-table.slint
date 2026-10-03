@@ -9,6 +9,7 @@ component Badge inherits Rectangle {
     border-radius: 4px;
     border-width: 1px;
     border-color: Theme.border;
+    max-width: 120px;
     HorizontalLayout {
         padding-left: 6px;
         padding-right: 6px;
@@ -190,8 +191,16 @@ export component TaskRow inherits Rectangle {
                     if root.task.project-name != "": Badge {
                         text: root.task.project-name;
                     }
-                    for tag in root.task.tags: Label {
+                    for tag[i] in root.task.tags: Label {
+                        visible: i < 2;
+                        width: i < 2 ? self.preferred-width : 0px;
                         text: "#" + tag;
+                        text-color: Theme.faint;
+                        font-size: Theme.fs-2xs;
+                        mono: true;
+                    }
+                    if root.task.tags.length > 2: Label {
+                        text: "+" + (root.task.tags.length - 2);
                         text-color: Theme.faint;
                         font-size: Theme.fs-2xs;
                         mono: true;
@@ -336,7 +345,7 @@ export component TaskTable inherits Rectangle {
             }
 
             Label {
-                text: root.active.length + " todo";
+                text: root.active.length + " 件";
                 text-color: Theme.mute;
                 font-size: Theme.fs-2xs;
                 mono: true;

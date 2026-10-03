@@ -33,7 +33,9 @@ impl AppState {
         let path = app_data_dir.join("qota.json");
         let mut data = if path.exists() {
             let bytes = std::fs::read(&path)?;
-            let data: AppData = serde_json::from_slice(&bytes)?;
+            // PowerShell 5.1 などが付ける BOM は読む前に外す
+            let body = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&bytes);
+            let data: AppData = serde_json::from_slice(body)?;
             // migrate(&mut data)?;
             data
         } else {
