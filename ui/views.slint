@@ -598,6 +598,8 @@ export component ProjectsView inherits Rectangle {
 
             Input {
                 vertical-stretch: 0;
+                bordered: true;
+                max-width: 360px;
                 placeholder: "+ 新しいプロジェクト";
                 accepted(text) => {
                     root.add-project(text, root.new-color);
@@ -802,6 +804,8 @@ export component TagsView inherits Rectangle {
             padding-top: 8px;
             padding-bottom: 8px;
             Input {
+                bordered: true;
+                max-width: 360px;
                 placeholder: "+ 新しいタグ";
                 accepted(text) => {
                     root.add-tag(text);
