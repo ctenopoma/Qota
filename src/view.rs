@@ -310,8 +310,11 @@ fn is_next_month(d: NaiveDate, today: NaiveDate) -> bool {
 
 /// 今後の列（見出し, 判定）。完了済みは「期限切れ」以外の列に残る（元アプリと同じ）
 pub fn upcoming_bucket(t: &Task, today: NaiveDate) -> Option<usize> {
-    let done = t.status == TaskStatus::Done;
-    let Some(d) = t.due.as_deref().and_then(parse_date) else { return Some(7) };
+    bucket_for(t.due.as_deref().and_then(parse_date), t.status == TaskStatus::Done, today)
+}
+
+fn bucket_for(due: Option<NaiveDate>, done: bool, today: NaiveDate) -> Option<usize> {
+    let Some(d) = due else { return Some(7) };
     let overdue = d < today;
     let is_today = d == today;
     let tomorrow = Some(d) == today.succ_opt();
@@ -334,6 +337,19 @@ pub fn upcoming_bucket(t: &Task, today: NaiveDate) -> Option<usize> {
         Some(6)
     } else {
         None
+    }
+}
+
+/// カードを今後の列に落としたときの期日。その列に入る最初の日（今日から数える）。
+/// 「記載なし」は期日を外すので Some(None)、「期限切れ」や日が見つからない列は None
+pub fn drop_due_for_column(index: usize, today: NaiveDate) -> Option<Option<NaiveDate>> {
+    match index {
+        0 => None,
+        7 => Some(None),
+        _ => (0..800u64)
+            .map(|i| today + chrono::Days::new(i))
+            .find(|d| bucket_for(Some(*d), false, today) == Some(index))
+            .map(Some),
     }
 }
 
@@ -582,5 +598,27 @@ mod tests {
         assert!(cells[4].today && cells[4].day == 1);
         let mon = calendar_cells(&data, 2026, 10, true, &HashSet::new(), today);
         assert_eq!(mon.iter().take_while(|c| c.day == 0).count(), 3);
+    }
+
+    #[test]
+    fn dropping_on_a_column_picks_the_first_day_that_belongs_to_it() {
+        // 2026-10-07（水）、2026-10-31（土）、2026-12-31（木）など、週・月の境目も確かめる
+        for today in ["2026-10-07", "2026-10-31", "2026-12-31", "2026-10-04"] {
+            let today = NaiveDate::parse_from_str(today, "%Y-%m-%d").unwrap();
+            assert_eq!(drop_due_for_column(0, today), None);
+            assert_eq!(drop_due_for_column(7, today), Some(None));
+            for index in 1..=6 {
+                // 週末なら「今週」、月末なら「今月」に入る日が無いことがある
+                let Some(d) = drop_due_for_column(index, today).flatten() else {
+                    assert!(matches!(index, 3 | 4), "列 {index} に入る日が無い（{today}）");
+                    continue;
+                };
+                assert_eq!(bucket_for(Some(d), false, today), Some(index), "{today} 列 {index}");
+                // 前の日はその列に入らない（= 最初の日）
+                if d > today {
+                    assert_ne!(bucket_for(Some(d.pred_opt().unwrap()), false, today), Some(index), "{today} 列 {index}");
+                }
+            }
+        }
     }
 }

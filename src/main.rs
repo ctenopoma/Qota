@@ -894,6 +894,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     on!(on_set_priority, |a, id, p| a.patch(&id, TaskPatch { priority: Some(view::int_to_priority(p)), ..Default::default() }));
     on!(on_set_due, |a, id, y, m, d| a.patch(&id, TaskPatch { due: Some(view::iso(y, m, d)), ..Default::default() }));
+    on!(on_move_task_to_column, |a, payload, column| {
+        // 今後の列にカードを落とした。期日をその列の最初の日（「記載なし」なら期日なし）にする。
+        // 繰り返しは、ほかの回に触れないよう「この回だけ」を動かす
+        let Some(id) = payload.strip_prefix("task:").map(str::to_string) else { return };
+        let index = column.max(0) as usize;
+        let today = view::today();
+        let current = a.state.data.lock().tasks.iter().find(|t| t.id == id).map(|t| view::upcoming_bucket(t, today));
+        let Some(current) = current else { return };
+        if current == Some(index) {
+            return;
+        }
+        let Some(target) = view::drop_due_for_column(index, today) else {
+            let title = view::UPCOMING_TITLES.get(index).copied().unwrap_or("");
+            let why = if index == 0 { "には移せません。移したい日の列に落としてください" } else { "に入る日がありません" };
+            a.toast(format!("「{title}」{why}"), false, true);
+            return;
+        };
+        let due = target.map(|d| d.format("%Y-%m-%d").to_string());
+        let label = view::format_due(due.as_deref());
+        let name = task_label(&a.state.data.lock(), &id);
+        let patch = TaskPatch { due: Some(due.clone()), ..Default::default() };
+        let moved = a.mutate(|d| format!("{}の期日変更", task_label(d, &id)), |s| tasks::update_task(s, &id, patch));
+        if moved.is_some() {
+            let msg = if due.is_some() { format!("{name}の期日を「{label}」にしました") } else { format!("{name}の期日を外しました") };
+            a.toast(msg, true, false);
+        }
+    });
     on!(on_set_due_in, |a, id, days| {
         let due = (view::today() + chrono::Duration::days(days as i64)).format("%Y-%m-%d").to_string();
         a.patch(&id, TaskPatch { due: Some(Some(due)), ..Default::default() });

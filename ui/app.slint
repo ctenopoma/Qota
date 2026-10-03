@@ -106,6 +106,7 @@ export component AppWindow inherits Window {
     callback set-priority(id: string, p: int);
     callback set-due(id: string, y: int, m: int, d: int);
     callback set-due-in(id: string, days: int);
+    callback move-task-to-column(payload: string, column: int);
     callback clear-due(id: string);
     callback duplicate-task(id: string);
     callback delete-task(id: string);
@@ -385,6 +386,7 @@ export component AppWindow inherits Window {
                     }
 
                     if root.view == "upcoming": UpcomingView {
+                    move-task(payload, column) => { root.move-task-to-column(payload, column); }
                         columns: root.columns;
                         open(id) => { root.open-task(id); }
                         toggle(id) => { root.toggle-task(id); }
