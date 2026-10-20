@@ -2,15 +2,16 @@
 import { Palette } from "std-widgets.slint";
 import { Theme, Bridge } from "theme.slint";
 import { Label, TextButton } from "widgets.slint";
-import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanRowItem } from "types.slint";
+import { TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanRowItem, ReviewRow, ReviewGroup, ReviewSummary } from "types.slint";
 import { Sidebar } from "sidebar.slint";
 import { TaskTable } from "task-table.slint";
 import { TimeChart } from "timechart.slint";
 import { TaskDetail } from "task-detail.slint";
 import { SettingsPage, CommandPalette, ConfirmDialog } from "pages.slint";
 import { UpcomingView, ProjectsView, TagsView, CalendarView, DayDialog, SearchPanel, NotifPanel } from "views.slint";
+import { ReviewView } from "review.slint";
 
-export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanRowItem }
+export { Theme, Bridge, TaskItem, SubtaskItem, NavProject, TagChip, TaskDetailData, Command, CalendarDay, Column, CalCell, PlanRowItem, ReviewRow, ReviewGroup, ReviewSummary }
 
 export component AppWindow inherits Window {
     title: "Qota";
@@ -118,6 +119,20 @@ export component AppWindow inherits Window {
     in property <[TaskItem]> notif-overdue;
     in property <[TaskItem]> notif-today;
 
+    // ───── 振り返り ─────
+    in property <string> review-period;
+    // 期間の単位（src/review.rs の UNITS の位置）
+    in property <int> review-unit;
+    in property <string> review-now-label;
+    in property <bool> review-at-now;
+    in property <ReviewSummary> review-summary;
+    in property <[ReviewGroup]> review-groups;
+    callback review-set-unit(index: int);
+    callback review-shift(delta: int);
+    callback review-now();
+    callback review-copy();
+    callback review-export();
+
     // ───── confirm ─────
     in-out property <bool> confirm-open;
     in property <string> confirm-message;
@@ -192,10 +207,14 @@ export component AppWindow inherits Window {
         keys.focus();
     }
 
+    // パネルやダイアログが開いているか（開いていれば、画面のキー操作はそちらに譲る）
+    pure function overlay-open() -> bool {
+        root.detail-open || root.palette-open || root.search-open || root.notif-open || root.day-open || root.confirm-open
+    }
+
     // 一覧のキー操作（↑↓ Enter Space Delete）を受けてよい状態か
     pure function list-keys-on() -> bool {
-        ((root.view == "today" && !root.today-chart) || root.view == "project") && !root.detail-open && !root.palette-open
-            && !root.search-open && !root.notif-open && !root.day-open && !root.confirm-open
+        ((root.view == "today" && !root.today-chart) || root.view == "project") && !root.overlay-open()
     }
 
     // 一覧の行が減ったときに、選んでいる行が範囲を越えないようにする
@@ -318,6 +337,25 @@ export component AppWindow inherits Window {
             keys: @keys(Control + "6");
             enabled: !root.confirm-open;
             activated => { root.go-to("settings"); }
+        }
+
+        KeyBinding {
+            keys: @keys(Control + "7");
+            enabled: !root.confirm-open;
+            activated => { root.go-to("review"); }
+        }
+
+        // 振り返りの期間を前後へ
+        KeyBinding {
+            keys: @keys(LeftArrow);
+            enabled: root.view == "review" && !root.overlay-open();
+            activated => { root.review-shift(-1); }
+        }
+
+        KeyBinding {
+            keys: @keys(RightArrow);
+            enabled: root.view == "review" && !root.overlay-open();
+            activated => { root.review-shift(1); }
         }
 
         // 一覧の行を選ぶ。入力欄や詳細パネルを開いているときは、そちらが先に受け取る
@@ -616,6 +654,22 @@ export component AppWindow inherits Window {
                         update-project(id, name, color) => { root.update-project(id, name, color); }
                         delete-project(id) => { root.delete-project(id); }
                         move-project(payload, before) => { root.move-project(payload, before); }
+                    }
+
+                    if root.view == "review": ReviewView {
+                        compact: root.compact;
+                        period: root.review-period;
+                        unit: root.review-unit;
+                        now-label: root.review-now-label;
+                        at-now: root.review-at-now;
+                        summary: root.review-summary;
+                        groups: root.review-groups;
+                        set-unit(i) => { root.review-set-unit(i); }
+                        shift(d) => { root.review-shift(d); }
+                        go-now => { root.review-now(); }
+                        copy => { root.review-copy(); }
+                        export-csv => { root.review-export(); }
+                        open(id) => { root.open-task(id); }
                     }
 
                     if root.view == "tags": TagsView {

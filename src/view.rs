@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::models::*;
+use crate::review;
 
 pub fn today() -> NaiveDate {
     Local::now().date_naive()
@@ -480,6 +481,74 @@ pub fn notifications(data: &AppData, expanded: &HashSet<String>) -> (Vec<crate::
     let today = data.tasks.iter().filter(open).filter(|t| is_today(t.due.as_deref()))
         .map(|t| task_item(t, data, expanded)).collect();
     (overdue, today)
+}
+
+// ───── 振り返り ─────
+
+/// 差の色分け（1 計画より長い / -1 短い / 0 同じか、比べられる計画が無い）
+fn diff_sign(s: &review::Sums) -> i32 {
+    if s.finished { s.diff.signum() } else { 0 }
+}
+
+pub fn review_summary(r: &review::Review) -> crate::ReviewSummary {
+    let s = r.sums();
+    crate::ReviewSummary {
+        done: s.done as i32,
+        plan: review::hm(s.plan).into(),
+        actual: review::hm(s.actual).into(),
+        diff: if s.finished { review::signed_hm(s.diff) } else { "–".into() }.into(),
+        diff_sign: diff_sign(&s),
+        diff_note: if s.finished && s.open { "終わった計画のみ" } else { "" }.into(),
+    }
+}
+
+pub fn review_groups(r: &review::Review) -> Vec<crate::ReviewGroup> {
+    r.groups.iter()
+        .map(|g| {
+            let total = g.sums();
+            let mut sub = vec![];
+            if total.done > 0 {
+                sub.push(format!("完了 {} 件", total.done));
+            }
+            if total.plan > 0 {
+                sub.push(format!("実績 {}", review::hm(total.actual)));
+            }
+            let rows: Vec<crate::ReviewRow> = g.rows.iter()
+                .map(|row| {
+                    let s = &row.sums;
+                    let actual = if s.plan == 0 {
+                        String::new()
+                    } else if s.running {
+                        format!("{}…", review::hm(s.actual))
+                    } else if s.actual == 0 {
+                        "–".into()
+                    } else {
+                        review::hm(s.actual)
+                    };
+                    // 差は、その行の計画がすべて終わってから出す
+                    let compared = s.finished && !s.open;
+                    crate::ReviewRow {
+                        task_id: row.task_id.as_deref().unwrap_or("").into(),
+                        title: row.title.as_str().into(),
+                        done: !row.completed.is_empty(),
+                        deleted: row.deleted(),
+                        done_label: row.done_label(r.period.unit).into(),
+                        plan: if s.plan > 0 { review::hm(s.plan) } else { String::new() }.into(),
+                        actual: actual.into(),
+                        diff: if compared { review::signed_hm(s.diff) } else { String::new() }.into(),
+                        diff_sign: if compared { diff_sign(s) } else { 0 },
+                    }
+                })
+                .collect();
+            crate::ReviewGroup {
+                name: g.name.as_str().into(),
+                color: g.color.as_deref().map(parse_color).unwrap_or_default(),
+                has_color: g.color.is_some(),
+                sub: sub.join(" ・ ").into(),
+                rows: ModelRc::new(VecModel::from(rows)),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

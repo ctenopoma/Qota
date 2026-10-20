@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::review::Unit;
 use crate::view::SortKey;
 
 /// 大きさはクライアント領域の物理 px（起動前は拡大率が分からないため）
@@ -40,11 +41,20 @@ pub struct UiPrefs {
     pub hint_dismissed: bool,
     /// 今日をタイムチャートで見ているか
     pub today_chart: bool,
+    /// 振り返りの期間の単位（日・週・月）
+    pub review_unit: Unit,
 }
 
 impl Default for UiPrefs {
     fn default() -> Self {
-        Self { sidebar_open: true, archive_open: false, today_sort: SortKey::Due, hint_dismissed: false, today_chart: false }
+        Self {
+            sidebar_open: true,
+            archive_open: false,
+            today_sort: SortKey::Due,
+            hint_dismissed: false,
+            today_chart: false,
+            review_unit: Unit::Week,
+        }
     }
 }
 
@@ -140,7 +150,14 @@ mod tests {
     fn prefs_round_trip_and_tolerate_missing_fields() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(load_prefs(dir.path()), UiPrefs::default());
-        let p = UiPrefs { sidebar_open: false, archive_open: true, today_sort: SortKey::Priority, hint_dismissed: true, today_chart: true };
+        let p = UiPrefs {
+            sidebar_open: false,
+            archive_open: true,
+            today_sort: SortKey::Priority,
+            hint_dismissed: true,
+            today_chart: true,
+            review_unit: Unit::Month,
+        };
         save_prefs(dir.path(), &p).unwrap();
         assert_eq!(load_prefs(dir.path()), p);
         // 古い・欠けたファイルでも既定値で補う

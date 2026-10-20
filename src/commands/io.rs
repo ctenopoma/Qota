@@ -18,6 +18,21 @@ pub fn export_json(state: &AppState) -> Result<String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// 振り返りの CSV を保存する。Excel で開いても文字化けしないよう、UTF-8 の BOM を付ける
+pub fn export_csv(content: &str, file_name: &str) -> Result<String> {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("CSV", &["csv"])
+        .set_file_name(file_name)
+        .save_file()
+    else {
+        return Err(Error::Cancelled);
+    };
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(content.as_bytes());
+    std::fs::write(&path, bytes)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// 読み込むファイルを選ぶ。start_dir を渡すとそのフォルダで開く（バックアップから戻すとき）
 pub fn pick_import_file(start_dir: Option<&Path>) -> Option<PathBuf> {
     let mut dialog = rfd::FileDialog::new().add_filter("JSON", &["json"]);

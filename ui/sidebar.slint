@@ -217,6 +217,14 @@ export component Sidebar inherits Rectangle {
                             root.navigate("calendar", "");
                         }
                     }
+
+                    NavButton {
+                        text: "振り返り";
+                        active: root.view == "review";
+                        clicked => {
+                            root.navigate("review", "");
+                        }
+                    }
                 }
 
                 VerticalLayout {

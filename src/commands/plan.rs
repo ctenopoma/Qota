@@ -270,6 +270,33 @@ pub fn record_completion(state: &AppState, task_id: &str, date: &str, now_min: u
     stop_actual(state, task_id, date, now_min)
 }
 
+/// 実績の棒の種類。番号はタイムチャートの a-kind と同じ（0 は棒なし）
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ActualKind {
+    /// 計画の最中。予定どおり進んでいるとみなし、いまの時刻まで
+    Running = 1,
+    /// 記録が無いので予定どおりとみなす
+    AsPlanned = 2,
+    /// 「終了」・完了・ドラッグで記録した
+    Recorded = 3,
+}
+
+/// 計画の棒に対する実績（種類, 開始, 終了。0 時からの分）。記録があればそれ、無ければ予定どおり。
+/// 今日の計画は、開始を過ぎていればいまの時刻（計画の終わりまで）まで進む。まだ始まっていない計画と、先の日の計画は None
+pub fn actual_for(b: &PlanBlock, actuals: &[ActualBlock], done: bool, today: &str, now_min: u16) -> Option<(ActualKind, u16, u16)> {
+    if let Some(a) = actuals.iter().find(|a| a.date == b.date && a.task_id == b.task_id) {
+        return Some((ActualKind::Recorded, a.start_min, a.end_min));
+    }
+    let end = b.start_min + b.duration_min;
+    match b.date.as_str().cmp(today) {
+        std::cmp::Ordering::Less => Some((ActualKind::AsPlanned, b.start_min, end)),
+        std::cmp::Ordering::Greater => None,
+        std::cmp::Ordering::Equal if now_min < b.start_min => None,
+        std::cmp::Ordering::Equal if done || now_min >= end => Some((ActualKind::AsPlanned, b.start_min, end)),
+        std::cmp::Ordering::Equal => Some((ActualKind::Running, b.start_min, now_min)),
+    }
+}
+
 /// 今日より前の計画で、実績が無いものを「予定どおり」として、計画と同じ内容で実績に残す（分析のため）。作った数を返す
 pub fn freeze_before(state: &AppState, today: &str) -> Result<usize> {
     let n = {
@@ -443,6 +470,38 @@ mod tests {
         let id = s.data.lock().plans[0].id.clone();
         remove_block(&s, &id).unwrap();
         assert!(s.data.lock().actuals.is_empty());
+    }
+
+    #[test]
+    fn actual_follows_the_clock_until_recorded() {
+        let b = PlanBlock {
+            id: "b".into(),
+            task_id: "t".into(),
+            title: "A".into(),
+            date: "2026-10-05".into(),
+            start_min: 9 * 60,
+            duration_min: 60,
+        };
+        let today = "2026-10-05";
+        // 開始前・先の日は無し
+        assert_eq!(actual_for(&b, &[], false, today, 8 * 60), None);
+        assert_eq!(actual_for(&b, &[], false, "2026-10-04", 12 * 60), None);
+        // 最中はいまの時刻まで。終わりを過ぎたか、完了していれば予定どおり
+        assert_eq!(actual_for(&b, &[], false, today, 9 * 60 + 20), Some((ActualKind::Running, 9 * 60, 9 * 60 + 20)));
+        assert_eq!(actual_for(&b, &[], true, today, 9 * 60 + 20), Some((ActualKind::AsPlanned, 9 * 60, 10 * 60)));
+        assert_eq!(actual_for(&b, &[], false, today, 11 * 60), Some((ActualKind::AsPlanned, 9 * 60, 10 * 60)));
+        // 前の日は予定どおり
+        assert_eq!(actual_for(&b, &[], false, "2026-10-06", 0), Some((ActualKind::AsPlanned, 9 * 60, 10 * 60)));
+        // 記録があればそれ
+        let a = ActualBlock {
+            id: "a".into(),
+            task_id: "t".into(),
+            title: "A".into(),
+            date: "2026-10-05".into(),
+            start_min: 9 * 60 + 5,
+            end_min: 9 * 60 + 50,
+        };
+        assert_eq!(actual_for(&b, &[a], false, today, 8 * 60), Some((ActualKind::Recorded, 9 * 60 + 5, 9 * 60 + 50)));
     }
 
     #[test]

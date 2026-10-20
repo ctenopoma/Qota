@@ -6,6 +6,7 @@ mod error;
 mod history;
 mod instance;
 mod models;
+mod review;
 mod seed;
 mod store;
 mod view;
@@ -48,6 +49,10 @@ struct App {
     notif_today: Rc<VecModel<TaskItem>>,
     // 今日のタイムチャート: 今日のタスク 1 件につき 1 行
     plan_rows: Rc<VecModel<PlanRowItem>>,
+    // 振り返り: 期間の単位と、期間に含める日（その日を含む日・週・月を出す）、プロジェクトごとのまとまり
+    review_unit: Cell<review::Unit>,
+    review_day: Cell<NaiveDate>,
+    review_groups: Rc<VecModel<ReviewGroup>>,
     // カレンダーで表示中の年月と、一覧を開いている日
     cal_month: Cell<(i32, i32)>,
     open_day: Cell<Option<(i32, i32, i32)>>,
@@ -206,6 +211,7 @@ impl App {
                     view::sync(&self.day_tasks, view::day_tasks(&data, y, m, d, &expanded));
                 }
             }
+            "review" => self.sync_review(&data),
             _ => {}
         }
         let (overdue, due_today) = view::notifications(&data, &expanded);
@@ -327,6 +333,9 @@ impl App {
             self.freeze_plans(t);
             self.today.set(t);
             set_bridge_today(&self.ui(), t);
+            self.refresh();
+        } else if self.ui().get_view() == "review" {
+            // 進行中の実績を、いまの時刻まで進める
             self.refresh();
         }
     }
@@ -559,21 +568,10 @@ impl App {
                 unplaced += 1;
             }
             // 実績: 記録があればそれ、無ければ「予定どおり」。計画の開始を過ぎていれば、いまの時刻（計画の終わりまで）まで進む
-            let (a_kind, a_s, a_e) = match block {
-                None => (0, 0, 0),
-                Some(b) => match data.actuals.iter().find(|a| a.date == today && a.task_id == t.id) {
-                    Some(a) => (3, a.start_min, a.end_min),
-                    None if now_min >= b.start_min => {
-                        let end = b.start_min + b.duration_min;
-                        if t.status == TaskStatus::Done || now_min >= end {
-                            (2, b.start_min, end)
-                        } else {
-                            (1, b.start_min, now_min)
-                        }
-                    }
-                    None => (0, 0, 0),
-                },
-            };
+            let (a_kind, a_s, a_e) = block
+                .and_then(|b| plan::actual_for(b, &data.actuals, t.status == TaskStatus::Done, &today, now_min))
+                .map(|(kind, s, e)| (kind as i32, s, e))
+                .unwrap_or((0, 0, 0));
             // 時間軸の外に出る実績は出さない
             let a_kind = if a_kind != 0 && (a_s < day.start || a_e > day.end) { 0 } else { a_kind };
             PlanRowItem {
@@ -595,6 +593,67 @@ impl App {
         ui.set_day_start_hour(data.settings.day_start_hour as i32);
         ui.set_day_end_hour(data.settings.day_end_hour as i32);
         self.set_now_line(day);
+    }
+
+    /// 振り返りの期間と中身。今日の計画は、いまの時刻までの実績で数える
+    fn review_of(&self, data: &AppData) -> review::Review {
+        let period = self.review_period(data);
+        review::build(data, period, self.today.get(), self.now_min())
+    }
+
+    fn review_period(&self, data: &AppData) -> review::Period {
+        let monday_first = data.settings.week_start == WeekStart::Mon;
+        review::Period::containing(self.review_unit.get(), self.review_day.get(), monday_first)
+    }
+
+    fn sync_review(&self, data: &AppData) {
+        let ui = self.ui();
+        let r = self.review_of(data);
+        let unit = self.review_unit.get();
+        ui.set_review_unit(review::UNITS.iter().position(|u| *u == unit).unwrap_or(0) as i32);
+        ui.set_review_period(r.period.label().into());
+        ui.set_review_now_label(match unit {
+            review::Unit::Day => "今日",
+            review::Unit::Week => "今週",
+            review::Unit::Month => "今月",
+        }.into());
+        ui.set_review_at_now(r.period.contains(self.today.get()));
+        ui.set_review_summary(view::review_summary(&r));
+        view::sync(&self.review_groups, view::review_groups(&r));
+    }
+
+    /// 振り返りの期間を n 単位ずらす。先の期間（今日より後）へは進めない
+    fn shift_review(&self, n: i32) {
+        let next = review::shift(self.review_unit.get(), self.review_day.get(), n);
+        let monday_first = self.state.data.lock().settings.week_start == WeekStart::Mon;
+        if review::Period::containing(self.review_unit.get(), next, monday_first).start > self.today.get() {
+            return;
+        }
+        self.review_day.set(next);
+        self.refresh();
+    }
+
+    /// 振り返りを日報・週報に貼れる Markdown にして、クリップボードに置く
+    fn copy_review(&self) {
+        let text = review::markdown(&self.review_of(&self.state.data.lock()));
+        match arboard::Clipboard::new().and_then(|mut c| c.set_text(text)) {
+            Ok(()) => self.toast("振り返りを Markdown でコピーしました".into(), false, false),
+            Err(e) => self.toast(format!("コピーできませんでした: {e}"), false, true),
+        }
+    }
+
+    /// 振り返りの期間の計画と実績を CSV に保存する
+    fn export_review(&self) {
+        let (csv, name) = {
+            let data = self.state.data.lock();
+            let period = self.review_period(&data);
+            (review::csv(&data, period, self.today.get(), self.now_min()), period.file_name())
+        };
+        match io::export_csv(&csv, &name) {
+            Ok(path) => self.toast(format!("保存しました: {path}"), false, false),
+            Err(Error::Cancelled) => {}
+            Err(e) => self.toast(format!("CSV を保存できませんでした: {e}"), false, true),
+        }
     }
 
     /// 「いま」の線の位置（時間軸の先頭からの 15 分の枠の数。軸の外なら -1）。1 分ごとに呼ぶ
@@ -643,6 +702,7 @@ impl App {
             cmd("→ 今日", "画面", "today", ""),
             cmd("→ 今後", "画面", "upcoming", ""),
             cmd("→ カレンダー", "画面", "calendar", ""),
+            cmd("→ 振り返り", "画面", "review", ""),
             cmd("→ プロジェクト一覧", "画面", "projects", ""),
             cmd("→ タグ", "画面", "tags", ""),
             cmd("→ 設定", "画面", "settings", ""),
@@ -861,6 +921,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         notif_overdue: Rc::new(VecModel::default()),
         notif_today: Rc::new(VecModel::default()),
         plan_rows: Rc::new(VecModel::default()),
+        review_unit: Cell::new(review::Unit::default()),
+        review_day: Cell::new(view::today()),
+        review_groups: Rc::new(VecModel::default()),
         cal_month: Cell::new({
             let t = view::today();
             (t.year(), t.month() as i32)
@@ -890,6 +953,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_sidebar_open(prefs.sidebar_open);
         ui.set_archive_open(prefs.archive_open);
         ui.set_today_sort(view::SORT_KEYS.iter().position(|k| *k == prefs.today_sort).unwrap_or(0) as i32);
+        app.review_unit.set(prefs.review_unit);
     }
 
     ui.set_active_tasks(app.active.clone().into());
@@ -905,6 +969,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_notif_overdue(app.notif_overdue.clone().into());
     ui.set_notif_today(app.notif_today.clone().into());
     ui.set_plan_rows(app.plan_rows.clone().into());
+    ui.set_review_groups(app.review_groups.clone().into());
     ui.set_data_path(app.state.path.to_string_lossy().as_ref().into());
 
     let bridge = ui.global::<Bridge>();
@@ -1332,6 +1397,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         a.ui().set_day_open(true);
     });
 
+    // ───── review ─────
+    on!(on_review_set_unit, |a, i| {
+        a.review_unit.set(review::UNITS.get(i as usize).copied().unwrap_or_default());
+        a.refresh();
+    });
+    on!(on_review_shift, |a, d| a.shift_review(d));
+    on!(on_review_now, |a| {
+        a.review_day.set(a.today.get());
+        a.refresh();
+    });
+    on!(on_review_copy, |a| a.copy_review());
+    on!(on_review_export, |a| a.export_review());
+
     // ───── search ─────
     on!(on_search_query, |a, q| {
         *a.search_query.borrow_mut() = q.to_string();
@@ -1389,7 +1467,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.invoke_palette_query(SharedString::new());
             ui.set_palette_open(true);
         }
-        Ok(v @ ("settings" | "upcoming" | "calendar" | "projects" | "tags")) => {
+        Ok(v @ ("settings" | "upcoming" | "calendar" | "projects" | "tags" | "review")) => {
             ui.invoke_navigate(v.into(), SharedString::new())
         }
         Ok("search") => {
@@ -1536,6 +1614,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     today_sort: view::SORT_KEYS.get(ui.get_today_sort() as usize).copied().unwrap_or_default(),
                     hint_dismissed: if dev_hooks { saved_prefs.hint_dismissed } else { ui.get_hint_dismissed() },
                     today_chart: if dev_hooks { saved_prefs.today_chart } else { ui.get_today_chart() },
+                    review_unit: if dev_hooks { saved_prefs.review_unit } else { a.review_unit.get() },
                 };
                 if let Err(e) = window_state::save_prefs(&dir, &prefs) {
                     eprintln!("failed to save ui-state.json: {e}");

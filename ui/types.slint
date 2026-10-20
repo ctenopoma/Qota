@@ -103,6 +103,46 @@ export struct PlanRowItem {
     a-len: float,
 }
 
+// 振り返りの 1 行（タスク 1 件。繰り返しは同じ系列をまとめて 1 行）
+export struct ReviewRow {
+    // 詳細を開くタスク。消したタスクは空
+    task-id: string,
+    title: string,
+    // 期間の中で完了した
+    done: bool,
+    deleted: bool,
+    // 完了の欄（日の振り返りでは時刻、週・月では日付、2 回以上なら回数）
+    done-label: string,
+    // 計画・実績の時間（「1:30」。計画が無ければ空。実績は進行中なら「…」付き、未着手なら「–」）
+    plan: string,
+    actual: string,
+    // 実績 − 計画。計画が終わっていなければ空
+    diff: string,
+    // 1 計画より長い / -1 短い / 0 同じか比べられない
+    diff-sign: int,
+}
+
+// 振り返りのプロジェクトごとのまとまり
+export struct ReviewGroup {
+    name: string,
+    color: color,
+    has-color: bool,
+    // 見出しの右（「完了 3 件 ・ 実績 2:30」）
+    sub: string,
+    rows: [ReviewRow],
+}
+
+// 振り返りの期間全体の合計
+export struct ReviewSummary {
+    done: int,
+    plan: string,
+    actual: string,
+    diff: string,
+    diff-sign: int,
+    // 差の下の注記（進行中・未着手の計画を差に入れていないとき）
+    diff-note: string,
+}
+
 // カレンダーの 1 マス。day == 0 は月初めの前の空白
 export struct CalCell {
     year: int,

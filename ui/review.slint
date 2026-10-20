@@ -1,0 +1,372 @@
+// 振り返り: 日・週・月の期間に完了したタスクと、タイムチャートの計画・実績の時間をプロジェクトごとに出す。
+// 「コピー」で日報・週報に貼る Markdown を、「CSV を保存…」で計画と実績を分析する表を出す
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Label, TextButton, HLine, Select } from "widgets.slint";
+import { ReviewRow, ReviewGroup, ReviewSummary } from "types.slint";
+
+// 上に並べる合計の 1 つ
+component Stat inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <color> value-color: Theme.ink;
+    in property <string> note;
+
+    spacing: 2px;
+    Label {
+        text: root.label;
+        text-color: Theme.faint;
+        font-size: Theme.fs-2xs;
+        mono: true;
+        letter-spacing: 1.1px;
+    }
+
+    Label {
+        text: root.value;
+        text-color: root.value-color;
+        font-size: Theme.fs-base;
+        font-weight: 600;
+        mono: true;
+    }
+
+    // 注記が無くても高さを取って、並びをそろえる
+    Label {
+        text: root.note;
+        text-color: Theme.faint;
+        font-size: Theme.fs-2xs;
+        line-height: 16px;
+    }
+}
+
+// 右寄せの数字の欄（見出しと行で幅をそろえる）
+component NumCell inherits Label {
+    width: 56px;
+    text-color: Theme.mute;
+    font-size: Theme.fs-2xs;
+    mono: true;
+    align: right;
+}
+
+component ReviewLine inherits Rectangle {
+    in property <ReviewRow> item;
+    in property <bool> compact;
+    callback open(id: string);
+
+    // 消したタスクは開けない
+    property <bool> openable: root.item.task-id != "";
+
+    background: ta.has-hover && root.openable ? Theme.panel : transparent;
+
+    ta := TouchArea {
+        mouse-cursor: root.openable ? MouseCursor.pointer : MouseCursor.default;
+        clicked => {
+            if root.openable {
+                root.open(root.item.task-id);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 12px;
+        Label {
+            width: 14px;
+            text: root.item.done ? "✓" : root.item.deleted ? "×" : "・";
+            family: Theme.symbol;
+            text-color: root.item.done ? Theme.accent : Theme.faint;
+            align: center;
+        }
+
+        Label {
+            horizontal-stretch: 1;
+            text: root.item.title;
+            text-color: root.item.deleted ? Theme.mute : Theme.ink;
+            strike: root.item.deleted;
+        }
+
+        NumCell {
+            text: root.item.done-label;
+        }
+
+        if !root.compact: NumCell {
+            text: root.item.plan;
+        }
+
+        NumCell {
+            text: root.item.actual;
+        }
+
+        if !root.compact: NumCell {
+            text: root.item.diff;
+            text-color: root.item.diff-sign > 0 ? Theme.med : root.item.diff-sign < 0 ? Theme.accent : Theme.mute;
+        }
+    }
+}
+
+export component ReviewView inherits Rectangle {
+    // 狭いときは計画と差の欄を隠す
+    in property <bool> compact;
+    // 期間の表記と単位（0 日 / 1 週 / 2 月。src/review.rs の UNITS と同じ順）
+    in property <string> period;
+    in property <int> unit;
+    // 「今日」「今週」「今月」
+    in property <string> now-label;
+    // 今の期間を見ている（▶ で先へは進めない）
+    in property <bool> at-now;
+    in property <ReviewSummary> summary;
+    in property <[ReviewGroup]> groups;
+    callback set-unit(index: int);
+    callback shift(delta: int);
+    callback go-now();
+    callback copy();
+    callback export-csv();
+    callback open(id: string);
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 16px;
+            padding-bottom: 8px;
+            spacing: 12px;
+            Label {
+                text: "振り返り";
+                font-size: Theme.fs-base;
+                font-weight: 600;
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+
+            TextButton {
+                focusable: true;
+                text: "コピー";
+                mono: false;
+                bordered: true;
+                clicked => {
+                    root.copy();
+                }
+            }
+
+            TextButton {
+                focusable: true;
+                text: root.compact ? "CSV…" : "CSV を保存…";
+                mono: false;
+                bordered: true;
+                clicked => {
+                    root.export-csv();
+                }
+            }
+        }
+
+        // 期間: 単位と、前後への移動（← → でも動く）
+        HorizontalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-bottom: 12px;
+            spacing: 4px;
+            Select {
+                width: 52px;
+                options: ["日", "週", "月"];
+                current-index: root.unit;
+                selected(i) => {
+                    root.set-unit(i);
+                }
+            }
+
+            Rectangle {
+                width: 4px;
+            }
+
+            TextButton {
+                focusable: true;
+                text: "◀";
+                family: Theme.symbol;
+                font-size: Theme.fs-sm;
+                pad-x: 6px;
+                clicked => {
+                    root.shift(-1);
+                }
+            }
+
+            TextButton {
+                focusable: !root.at-now;
+                text: "▶";
+                family: Theme.symbol;
+                font-size: Theme.fs-sm;
+                pad-x: 6px;
+                text-color: root.at-now ? Theme.border : Theme.mute;
+                hover-color: root.at-now ? Theme.border : Theme.ink;
+                clicked => {
+                    if !root.at-now {
+                        root.shift(1);
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 4px;
+            }
+
+            TextButton {
+                focusable: true;
+                text: root.now-label;
+                mono: false;
+                bordered: true;
+                clicked => {
+                    root.go-now();
+                }
+            }
+
+            Rectangle {
+                width: 8px;
+            }
+
+            Label {
+                horizontal-stretch: 1;
+                text: root.period;
+                line-height: 22px;
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-bottom: 12px;
+            spacing: 32px;
+            alignment: start;
+            Stat {
+                label: "完了";
+                value: root.summary.done + " 件";
+            }
+
+            Stat {
+                label: "計画";
+                value: root.summary.plan;
+            }
+
+            Stat {
+                label: "実績";
+                value: root.summary.actual;
+            }
+
+            Stat {
+                label: "差";
+                value: root.summary.diff;
+                value-color: root.summary.diff-sign > 0 ? Theme.med : root.summary.diff-sign < 0 ? Theme.accent : Theme.ink;
+                note: root.summary.diff-note;
+            }
+        }
+
+        HLine { }
+
+        if root.groups.length == 0: Rectangle {
+            vertical-stretch: 1;
+            Label {
+                width: 100%;
+                height: 100%;
+                text: "この期間に完了したタスクや計画はありません";
+                text-color: Theme.faint;
+                align: center;
+            }
+        }
+
+        if root.groups.length > 0: sv := ScrollView {
+            vertical-stretch: 1;
+            content-width: self.visible-width;
+            content-height: max(self.visible-height, list.preferred-height);
+
+            list := VerticalLayout {
+                width: sv.visible-width;
+                alignment: start;
+                padding-bottom: 24px;
+
+                // 列の見出し。スクロールバーの分で行とずれないよう、行と同じ中に置く
+                HorizontalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    spacing: 12px;
+                    Rectangle {
+                        width: 14px;
+                    }
+
+                    Label {
+                        horizontal-stretch: 1;
+                        text: "タスク";
+                        text-color: Theme.faint;
+                        font-size: Theme.fs-2xs;
+                        mono: true;
+                    }
+
+                    NumCell {
+                        text: "完了";
+                        text-color: Theme.faint;
+                    }
+
+                    if !root.compact: NumCell {
+                        text: "計画";
+                        text-color: Theme.faint;
+                    }
+
+                    NumCell {
+                        text: "実績";
+                        text-color: Theme.faint;
+                    }
+
+                    if !root.compact: NumCell {
+                        text: "差";
+                        text-color: Theme.faint;
+                    }
+                }
+
+                HLine { }
+
+                for g in root.groups: VerticalLayout {
+                    HorizontalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        padding-top: 14px;
+                        padding-bottom: 6px;
+                        spacing: 8px;
+                        if g.has-color: VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 8px;
+                                height: 8px;
+                                border-radius: 4px;
+                                background: g.color;
+                            }
+                        }
+
+                        Label {
+                            text: g.name;
+                            font-weight: 600;
+                        }
+
+                        Label {
+                            horizontal-stretch: 1;
+                            text: g.sub;
+                            text-color: Theme.mute;
+                            font-size: Theme.fs-2xs;
+                            mono: true;
+                        }
+                    }
+
+                    for r in g.rows: ReviewLine {
+                        item: r;
+                        compact: root.compact;
+                        open(id) => {
+                            root.open(id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
