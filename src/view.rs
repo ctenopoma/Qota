@@ -56,6 +56,11 @@ pub fn sort_by_due(tasks: &mut [&Task]) {
     });
 }
 
+/// 完了済みを末尾へ寄せる。安定ソートなので、未完了に戻せば元の位置に戻る
+pub fn done_last(tasks: &mut [&Task]) {
+    tasks.sort_by_key(|t| t.status == TaskStatus::Done);
+}
+
 /// 優先度の高い順（なしは末尾）
 fn priority_rank(p: Option<Priority>) -> u8 {
     match p {
@@ -365,9 +370,10 @@ pub fn upcoming_columns(data: &AppData, expanded: &HashSet<String>, today: Naive
     }
     UPCOMING_TITLES.iter().zip(buckets).enumerate()
         .map(|(i, (title, mut items))| {
-            // sortByPriority(sortByDue(...))：期日順に並べてから優先度で安定ソート
+            // sortByPriority(sortByDue(...))：期日順に並べてから優先度で安定ソート。完了済みは列の末尾
             sort_by_due(&mut items);
             items.sort_by_key(|t| priority_rank(t.priority));
+            done_last(&mut items);
             column(&format!("upcoming-{i}"), title, items.len().to_string(), None, &items, data, expanded)
         })
         .collect()
@@ -409,12 +415,13 @@ pub fn project_columns(data: &AppData, expanded: &HashSet<String>) -> Vec<crate:
         .collect()
 }
 
-/// タグごとの列。タスクは期日順、見出しの右は件数
+/// タグごとの列。タスクは期日順で完了済みは末尾、見出しの右は件数
 pub fn tag_columns(data: &AppData, expanded: &HashSet<String>) -> Vec<crate::Column> {
     data.tags.iter()
         .map(|tag| {
             let mut items: Vec<&Task> = data.tasks.iter().filter(|t| t.tag_ids.contains(&tag.id)).collect();
             sort_by_due(&mut items);
+            done_last(&mut items);
             column(&tag.id, &format!("#{}", tag.name), items.len().to_string(), None, &items, data, expanded)
         })
         .collect()
@@ -449,7 +456,9 @@ pub fn calendar_cells(
     let mut d = first;
     while d.month() == first.month() {
         let iso = d.format("%Y-%m-%d").to_string();
-        let day_tasks: Vec<&Task> = data.tasks.iter().filter(|t| t.due.as_deref() == Some(iso.as_str())).collect();
+        // 完了済みは末尾に寄せ、マスに出しきれないときは未完了を先に見せる
+        let mut day_tasks: Vec<&Task> = data.tasks.iter().filter(|t| t.due.as_deref() == Some(iso.as_str())).collect();
+        done_last(&mut day_tasks);
         let shown: Vec<crate::TaskItem> = day_tasks.iter().take(2).map(|t| task_item(t, data, expanded)).collect();
         cells.push(crate::CalCell {
             year,
@@ -464,13 +473,12 @@ pub fn calendar_cells(
     cells
 }
 
-/// その日のタスク（日付を押したときの一覧）
+/// その日のタスク（日付を押したときの一覧）。完了済みは末尾
 pub fn day_tasks(data: &AppData, year: i32, month: i32, day: i32, expanded: &HashSet<String>) -> Vec<crate::TaskItem> {
     let Some(iso) = iso(year, month, day) else { return vec![] };
-    data.tasks.iter()
-        .filter(|t| t.due.as_deref() == Some(iso.as_str()))
-        .map(|t| task_item(t, data, expanded))
-        .collect()
+    let mut items: Vec<&Task> = data.tasks.iter().filter(|t| t.due.as_deref() == Some(iso.as_str())).collect();
+    done_last(&mut items);
+    items.iter().map(|t| task_item(t, data, expanded)).collect()
 }
 
 /// 通知パネル: 期限切れ（未完了）と今日（未完了）
@@ -625,6 +633,29 @@ mod tests {
         assert_eq!(cols[0].sub, "1/2");
         let ids: Vec<String> = cols[0].tasks.iter().map(|t| t.id.to_string()).collect();
         assert_eq!(ids, ["open"]);
+    }
+
+    #[test]
+    fn upcoming_columns_put_done_tasks_last_and_restore_when_undone() {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+        let mut data = crate::seed::sample_data();
+        data.tasks = ["a", "b", "c"].iter()
+            .map(|id| {
+                let mut t = task_due(Some("2026-10-01"), false);
+                t.id = (*id).into();
+                t.priority = None;
+                t
+            })
+            .collect();
+        let today_ids = |data: &AppData| -> String {
+            let cols = upcoming_columns(data, &HashSet::new(), today);
+            cols[1].tasks.iter().map(|t| t.id.to_string()).collect()
+        };
+        assert_eq!(today_ids(&data), "abc");
+        data.tasks[0].status = TaskStatus::Done;
+        assert_eq!(today_ids(&data), "bca");
+        data.tasks[0].status = TaskStatus::Todo;
+        assert_eq!(today_ids(&data), "abc");
     }
 
     #[test]
